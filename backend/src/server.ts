@@ -46,10 +46,18 @@ const allowedOrigins = [
   "https://www.licorice4good.com",
   "https://api.licorice4good.com",
   "http://localhost:3000", // Next.js dev server
-  "http://localhost:5000", // Backenid dev server
+  "http://localhost:5000", // Backend dev server
   "https://licorice4-good-rk9j.vercel.app",
   "https://nathan-eh1y.vercel.app",
+  ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
 ];
+
+const isAllowedOrigin = (origin: string): boolean => {
+  if (allowedOrigins.includes(origin)) return true;
+  // Allow Vercel preview and production deployments
+  if (/^https:\/\/[\w-]+\.vercel\.app$/.test(origin)) return true;
+  return false;
+};
 
 app.use(
   cors({
@@ -62,7 +70,7 @@ app.use(
         return callback(null, true);
       }
 
-      if (allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
