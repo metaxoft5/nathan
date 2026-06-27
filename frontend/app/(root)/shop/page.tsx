@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import CustomButton from "@/components/custom/CustomButton";
 import { useRouter } from "next/navigation";
+import { apiPath } from "@/utils/api";
 
 const ORANGE = "#FF5D39";
 const YELLOW = "#F1A900";
@@ -45,7 +46,7 @@ const ShopPage = () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-        const response = await fetch("/api/products", {
+        const response = await fetch(apiPath("/products"), {
           method: "GET",
           credentials: "include",
           headers: {

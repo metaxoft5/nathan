@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCartStore } from "@/store/cartStore";
 import { useWishlistStore } from "@/store/wishlistStore";
+import { apiPath } from "@/utils/api";
 const ORANGE = "#FF5D39";
 const BLACK = "#111111";
 
@@ -55,7 +56,7 @@ const ProductDetailPage = () => {
 
       try {
         setLoading(true);
-        const response = await fetch(`/api/products/${id}`, {
+        const response = await fetch(apiPath(`/products/${id}`), {
           credentials: "include",
         });
 

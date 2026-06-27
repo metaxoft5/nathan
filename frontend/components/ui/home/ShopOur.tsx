@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AnimatedText from "@/components/custom/AnimatedText";
 import AnimatedSection from "@/components/custom/AnimatedSection";
 import CustomButton from "@/components/custom/CustomButton";
+import { apiPath } from "@/utils/api";
 
 // Product data structure matching the backend API
 type Product = {
@@ -48,7 +49,7 @@ const ShopOur = () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
-        const response = await fetch('/api/products', {
+        const response = await fetch(apiPath("/products"), {
           method: 'GET',
           credentials: 'include',
           headers: {

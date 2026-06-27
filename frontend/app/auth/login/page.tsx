@@ -6,6 +6,7 @@ import Link from "next/link";
 import AuthCard from "@/components/ui/auth/AuthCard";
 import PasswordInput from "@/components/ui/auth/PasswordInput";
 import { ToastContainer, toast } from "react-toastify";
+import { API_URL, setAuthToken } from "@/utils/api";
 
 // Helper function for fallback error messages
 const getFallbackMessage = (status: number | undefined): string => {
@@ -69,12 +70,15 @@ const LoginPage = () => {
 
     try {
       setLoading(true);
-      const API_URL = process.env.NEXT_PUBLIC_API_URL;
       const response = await axios.post(
         `${API_URL}/auth/login`,
         { email: form.email, password: form.password },
         { withCredentials: true }
       );
+
+      if (response.data?.token) {
+        setAuthToken(response.data.token);
+      }
 
       // Check if user needs verification - only redirect if explicitly required
       if (response.data?.requiresVerification) {

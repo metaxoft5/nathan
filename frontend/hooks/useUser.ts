@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { API_URL, authHeaders } from "@/utils/api";
 import axios from "axios";
 
 export type User = {
@@ -43,11 +44,11 @@ export function useUser() {
     }
 
     lastFetchRef.current = now;
-    const API_URL = process.env.NEXT_PUBLIC_API_URL;
     
     try {
       const res = await axios.get<MeResponse>(`${API_URL}/auth/me`, {
         withCredentials: true,
+        headers: authHeaders(),
       });
       
       const userData = res.data.user;

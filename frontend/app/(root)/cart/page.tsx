@@ -7,6 +7,7 @@ import { useOrdersStore } from "@/store/ordersStore";
 import { useUser } from "@/hooks/useUser";
 import VerificationGuard from "@/components/auth/VerificationGuard";
 import CustomButton from "@/components/custom/CustomButton";
+import { apiPath } from "@/utils/api";
 
 // Type definitions
 interface Product {
@@ -56,7 +57,7 @@ const CartPage = () => {
   const fetchRecommendedProducts = useCallback(async () => {
     setRecommendedLoading(true);
     try {
-      const response = await fetch("/api/products", {
+      const response = await fetch(apiPath("/products"), {
         credentials: "include",
       });
 
@@ -180,7 +181,7 @@ const CartPage = () => {
       try {
         const productIds = items.map((item) => item.productId);
         // Check if products exist by fetching them from backend
-        const response = await fetch("/api/products", {
+        const response = await fetch(apiPath("/products"), {
           credentials: "include",
         });
 

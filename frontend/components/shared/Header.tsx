@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/hooks/useUser";
 import { useCartStore } from "@/store/cartStore";
 import axios from "axios";
+import { API_URL, authHeaders, clearAuthToken } from "@/utils/api";
 import { useWishlistStore } from "@/store/wishlistStore";
 
 // Define types for navLinks and subLinks
@@ -24,7 +25,6 @@ type NavLink = {
 };
 
 const Header = () => {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL;
   const { user, loading, error, clearUser } = useUser();
   const { getItemCount } = useCartStore();
   const { getItemCount: getWishlistItemCount } = useWishlistStore();
@@ -48,7 +48,11 @@ const Header = () => {
   const handleLogout = async () => {
     setLogoutLoading(true);
     try {
-      await axios.post(`${API_URL}/auth/logout`, {}, { withCredentials: true });
+      await axios.post(`${API_URL}/auth/logout`, {}, {
+        withCredentials: true,
+        headers: authHeaders(),
+      });
+      clearAuthToken();
       clearUser(); // Clear user state immediately
       window.location.reload();
     } catch (err) {

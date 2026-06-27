@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useUser } from "@/hooks/useUser";
 import axios from "axios";
+import { API_URL, authHeaders, clearAuthToken } from "@/utils/api";
 
 const NavLink = ({
   href,
@@ -51,12 +52,15 @@ const NavLink = ({
 const DashboardHeader = () => {
   const { user, loading: userLoading, clearUser } = useUser();
   const router = useRouter();
-  const API_URL = process.env.NEXT_PUBLIC_API_URL;
   const [menuOpen, setMenuOpen] = useState(false);
 
   const onLogout = async () => {
     try {
-      await axios.post(`${API_URL}/auth/logout`, {}, { withCredentials: true });
+      await axios.post(`${API_URL}/auth/logout`, {}, {
+        withCredentials: true,
+        headers: authHeaders(),
+      });
+      clearAuthToken();
       clearUser(); // Clear user state immediately
       router.replace("/");
     } catch {
