@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "buildCommand": "npm run vercel-build",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60,
+      "includeFiles": "src/generated/prisma/**"
+    }
+  },
+  "routes": [
+    {
+      "src": "/payments/webhook",
+      "dest": "api/index.ts",
+      "methods": ["POST"]
+    },
+    {
+      "src": "/shippo/webhook",
+      "dest": "api/index.ts",
+      "methods": ["POST"]
+    },
+    {
+      "src": "/uploads/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/auth/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/products/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/orders/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/3pack/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/inventory/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/payments/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/analytics/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/admin/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/shippo/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/tracking/(.*)",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/health",
+      "dest": "api/index.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "api/index.ts"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
