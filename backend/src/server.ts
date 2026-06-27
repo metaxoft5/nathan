@@ -49,7 +49,7 @@ const allowedOrigins = [
   "http://localhost:5000", // Backenid dev server
   "https://licorice4-good-rk9j.vercel.app",
   "https://nathan-xi-two.vercel.app",
-  "https://nathan-xi-two.vercel.app",
+  "https://nathan-eh1y.vercel.app",
 ];
 
 app.use(
