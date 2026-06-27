@@ -7,7 +7,7 @@ import React from "react";
 const dedication = () => {
   return (
     <section className="w-full min-h-screen flex flex-col items-center justify-center layout py-8 md:py-12 lg:py-16 px-4 md:px-8">
-      <AnimatedSection 
+      <AnimatedSection
         animationType="slideUp"
         duration={0.5}
         delay={0.2}
@@ -29,7 +29,9 @@ const dedication = () => {
         </p>
         <CustomButton
           title="Get Started Now"
-          className="font-bold text-white w-[260px] md:w-[260px] lg:w-[260px] px-8 py-3 md:py-4"
+          className="font-bold text-white w-[260px] md:w-[260px] lg:w-[260px] px-8 py-3 md:py-4 z-9"
+          // href="https://licoriceaffiliate.licorice4good.com/"
+          href="https://lp.constantcontactpages.com/sl/kaaCahu/fundraise"
         />
         <div className="w-full flex justify-center items-center -mt-8 md:-mt-16 lg:-mt-24">
           <Image

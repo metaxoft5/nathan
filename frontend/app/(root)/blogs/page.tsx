@@ -1,3 +1,4 @@
+"use client";
 import React from "react";
 import BlogLayout from "@/components/shared/BlogLayout";
 import { blogPageData } from "@/constant/blogData";

@@ -2,7 +2,6 @@
 import React, { useEffect, useState, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/hooks/useUser";
-import { API_URL, authHeaders } from "@/utils/api";
 
 const ORANGE = "#FF5D39";
 const YELLOW = "#F1A900";
@@ -154,9 +153,9 @@ function VerifyEmailContent() {
       } else {
         // No token available, try to check verification status with backend
         try {
+          const API_URL = process.env.NEXT_PUBLIC_API_URL;
           const response = await fetch(`${API_URL}/auth/me`, {
             credentials: "include",
-            headers: authHeaders(),
           });
           
           if (response.ok) {

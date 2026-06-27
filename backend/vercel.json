@@ -1,74 +1,72 @@
 {
   "version": 2,
-  "buildCommand": "npm run vercel-build",
   "functions": {
-    "api/index.ts": {
-      "maxDuration": 60,
-      "includeFiles": "src/generated/prisma/**"
+    "src/server.ts": {
+      "maxDuration": 60
     }
   },
   "routes": [
     {
       "src": "/payments/webhook",
-      "dest": "api/index.ts",
+      "dest": "src/server.ts",
       "methods": ["POST"]
     },
     {
       "src": "/shippo/webhook",
-      "dest": "api/index.ts",
+      "dest": "src/server.ts",
       "methods": ["POST"]
     },
     {
       "src": "/uploads/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/auth/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/products/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/orders/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/3pack/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/inventory/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/payments/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/analytics/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/admin/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/shippo/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/tracking/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/health",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     },
     {
       "src": "/(.*)",
-      "dest": "api/index.ts"
+      "dest": "src/server.ts"
     }
   ],
   "env": {

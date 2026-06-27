@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { useOrdersStore } from '@/store/ordersStore';
+import type { ShippingAddress } from '@/store/ordersStore';
 import Image from 'next/image';
 
 // Reusable Badge component
@@ -40,33 +41,82 @@ type ProductRef = {
   sku?: string | null;
 };
 
-type BackendOrderItem = OrderItem & { product?: ProductRef };
+type VariationRef = {
+  id?: string;
+  name?: string | null;
+  sku?: string | null;
+};
+
+type BackendOrderItem = OrderItem & { 
+  product?: ProductRef;
+  variation?: VariationRef;
+  variationId?: string | null;
+};
 
 // Reusable OrderItemCard
-type DisplayOrderItem = OrderItem & { product?: ProductRef };
-const OrderItemCard = ({ item }: { item: DisplayOrderItem }) => (
-  <div className="flex items-center gap-4 bg-[#FFF7F4] rounded-lg p-3 border border-[#FF5D39]">
-    {item.imageUrl ? (
-      <Image
-        src={item.imageUrl}
-        alt={item.productName || item.product?.name || 'Product'}
-        width={64}
-        height={64}
-        className="w-16 h-16 object-cover rounded-lg border-2 border-[#F1A900]"
-      />
-    ) : (
-      <div className="w-16 h-16 bg-gray-100 rounded-lg border-2 border-[#F1A900]" />
-    )}
-    <div className="flex-1">
-      <div className="font-bold text-black">{item.productName || item.product?.name || 'Product'}</div>
-      {item.product?.sku && (
-        <div className="text-xs text-gray-500">SKU: {item.product.sku}</div>
+type DisplayOrderItem = OrderItem & { 
+  product?: ProductRef;
+  variation?: VariationRef;
+  variationName?: string | null;
+};
+const OrderItemCard = ({ item }: { item: DisplayOrderItem }) => {
+  const variationName = item.variationName || item.variation?.name;
+  return (
+    <div className="flex items-center gap-4 bg-[#FFF7F4] rounded-lg p-3 border border-[#FF5D39]">
+      {item.imageUrl ? (
+        <Image
+          src={item.imageUrl}
+          alt={item.productName || item.product?.name || 'Product'}
+          width={64}
+          height={64}
+          className="w-16 h-16 object-cover rounded-lg border-2 border-[#F1A900]"
+        />
+      ) : (
+        <div className="w-16 h-16 bg-gray-100 rounded-lg border-2 border-[#F1A900]" />
       )}
-      <div className="text-sm text-[#FF5D39] font-semibold">{item.quantity} × ${item.price.toFixed(2)}</div>
+      <div className="flex-1">
+        <div className="font-bold text-black">{item.productName || item.product?.name || 'Product'}</div>
+        {variationName && (
+          <div className="text-xs font-medium text-[#FF5D39] mt-0.5">
+            Variation: {variationName}
+          </div>
+        )}
+        {item.product?.sku && (
+          <div className="text-xs text-gray-500">SKU: {item.product.sku}</div>
+        )}
+        <div className="text-sm text-[#FF5D39] font-semibold">{item.quantity} × ${item.price.toFixed(2)}</div>
+      </div>
+      <div className="text-lg font-bold text-[#F1A900]">${item.total.toFixed(2)}</div>
     </div>
-    <div className="text-lg font-bold text-[#F1A900]">${item.total.toFixed(2)}</div>
-  </div>
-);
+  );
+};
+
+const normalizeShippingAddress = (
+  address?: string | ShippingAddress | null
+) => {
+  if (!address || typeof address === 'string') return null;
+
+  const nestedAddress = address.address || {};
+  const cityState = [
+    address.city || nestedAddress.city || '',
+    address.state || nestedAddress.state || '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const zip = address.zip || address.zipCode || nestedAddress.postal_code || '';
+  const cityStateZip = [cityState, zip].filter(Boolean).join(' ');
+  const normalized = {
+    name: address.name || '',
+    email: address.email || '',
+    phone: address.phone || '',
+    street1: address.street1 || address.street || nestedAddress.line1 || '',
+    street2: address.street2 || nestedAddress.line2 || '',
+    cityStateZip,
+    country: address.country || nestedAddress.country || '',
+  };
+
+  return Object.values(normalized).some(Boolean) ? normalized : null;
+};
 
 const OrderDetailPage = () => {
   const params = useParams();
@@ -75,34 +125,44 @@ const OrderDetailPage = () => {
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params?.id[0] : '';
   const { order, loading, error, fetchOrderById, clearOrder } = useOrdersStore();
 
-  // Authentication check
-  useEffect(() => {
-    if (!userLoading && !user) {
-      router.push("/auth/login");
-      return;
-    }
-  }, [user, userLoading, router]);
+  // Removed authentication redirect - show message instead
 
   useEffect(() => {
     if (id && user) fetchOrderById(id).catch(() => {});
     return () => clearOrder();
   }, [id, fetchOrderById, clearOrder, user]);
 
-  // Show loading while checking authentication
-  if (userLoading) {
+  // Show message if not authenticated (no redirect)
+  if (!userLoading && !user) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF5D39] mx-auto mb-4"></div>
-          <p className="text-black text-lg">Loading order...</p>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+          <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Details</h2>
+          <p className="text-gray-600 mb-6">
+            Login to view your order details and tracking information.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={() => router.push("/auth/login")}
+              className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-orange-600 hover:to-red-600 transition-all"
+            >
+              Login to View Order
+            </button>
+            <button
+              onClick={() => router.push("/shop")}
+              className="w-full border-2 border-gray-300 text-gray-700 font-semibold py-3 rounded-lg hover:bg-gray-50 transition-all"
+            >
+              Continue Shopping
+            </button>
+          </div>
         </div>
       </div>
     );
-  }
-
-  // Redirect if not authenticated
-  if (!user) {
-    return null;
   }
 
   if (loading)
@@ -124,6 +184,8 @@ const OrderDetailPage = () => {
         <Badge color="#F1A900" className="text-base">Order not found.</Badge>
       </div>
     );
+
+  const shippingAddress = normalizeShippingAddress(order.shippingAddress);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -155,6 +217,7 @@ const OrderDetailPage = () => {
               const item = it as BackendOrderItem;
               const derivedImage = item.imageUrl || item.product?.imageUrl || undefined;
               const derivedName = item.productName || item.product?.name || 'Product';
+              const variationName = item.variation?.name || null;
               return (
                 <OrderItemCard
                   key={item.id}
@@ -162,6 +225,7 @@ const OrderDetailPage = () => {
                     ...item,
                     productName: derivedName,
                     imageUrl: derivedImage,
+                    variationName: variationName,
                     total: item.quantity * item.price,
                   }}
                 />
@@ -169,6 +233,20 @@ const OrderDetailPage = () => {
             })}
           </div>
         </div>
+        {shippingAddress && (
+          <div className="mt-6 pt-6 border-t border-[#F1A900]/40">
+            <div className="text-lg font-bold text-black mb-2">Shipping Address</div>
+            <div className="rounded-lg bg-[#FFF7F4] border border-[#FF5D39] p-4 text-sm text-gray-700 space-y-1">
+              {shippingAddress.name && <p className="font-semibold text-black">{shippingAddress.name}</p>}
+              {shippingAddress.street1 && <p>{shippingAddress.street1}</p>}
+              {shippingAddress.street2 && <p>{shippingAddress.street2}</p>}
+              {shippingAddress.cityStateZip && <p>{shippingAddress.cityStateZip}</p>}
+              {shippingAddress.country && <p>{shippingAddress.country}</p>}
+              {shippingAddress.email && <p className="pt-2 break-all">Email: {shippingAddress.email}</p>}
+              {shippingAddress.phone && <p>Phone: {shippingAddress.phone}</p>}
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

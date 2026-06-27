@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import AuthCard from '@/components/ui/auth/AuthCard';
-import { API_URL, clearAuthToken } from '@/utils/api';
+import { getToken, removeToken, removeUser } from '@/utils/tokenUtils';
 
 const LogoutPage = () => {
   const [status, setStatus] = useState('Logging out...');
@@ -13,11 +13,19 @@ const LogoutPage = () => {
   useEffect(() => {
     const doLogout = async () => {
       try {
-        await axios.post(`${API_URL}/auth/logout`, {}, { withCredentials: true });
-        clearAuthToken();
+        const API_URL = process.env.NEXT_PUBLIC_API_URL;
+        const token = getToken();
+        await axios.post(`${API_URL}/auth/logout`, {}, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        removeToken(); // Clear token from localStorage
+        removeUser(); // Clear user from localStorage
         setStatus('Logged out successfully.');
         setTimeout(() => router.replace('/'), 600);
       } catch (e: unknown) {
+        // Even if logout fails, clear local state
+        removeToken();
+        removeUser();
         setStatus('');
         setStoreError((e as Error)?.message || 'Logout failed');
       }

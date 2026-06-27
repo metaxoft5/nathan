@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import apiClient from "@/utils/axios";
 import { useUser } from "@/hooks/useUser";
 import SafeLink from "@/components/custom/SafeLink";
 import VerificationGuard from "@/components/auth/VerificationGuard";
@@ -36,25 +37,25 @@ const DashboardPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Only redirect if user is loaded and either no user or not an admin
+    // GlobalVerificationCheck handles redirects
+    // Just show loading/error if not admin
     if (!userLoading && (!user || user.role !== "admin")) {
-      router.replace("/");
+      // GlobalVerificationCheck will redirect, just return early
+      return;
     }
   }, [user, userLoading, router]);
 
   useEffect(() => {
     if (user?.role !== "admin") return;
-    const API_URL = process.env.NEXT_PUBLIC_API_URL;
     const controller = new AbortController();
     (async () => {
       setLoading(true);
       setError(null);
       try {
         // Try to fetch a large page of orders for simple analytics
-        const { data } = await axios.get<{ orders: Order[] }>(
-          `${API_URL}/orders/admin/all`,
+        const { data } = await apiClient.get<{ orders: Order[] }>(
+          `/orders/admin/all`,
           {
-            withCredentials: true,
             signal: controller.signal,
             params: { page: 1, limit: 500 },
           }
@@ -149,7 +150,7 @@ const DashboardPage = () => {
   // Show loading state while user is being loaded
   if (userLoading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+      <div className="w-full h-full layout py-10">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF5D39] mx-auto mb-4"></div>
           <p className="text-black text-lg">Loading dashboard...</p>
@@ -161,11 +162,13 @@ const DashboardPage = () => {
   // Show access denied if user is loaded but not admin
   if (!userLoading && user && user.role !== "admin") {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+      <div className="w-full h-full layout py-10">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-black mb-4">Access Denied</h1>
-          <p className="text-black opacity-70 mb-6">You need admin privileges to access this page.</p>
-          <Link 
+          <p className="text-black opacity-70 mb-6">
+            You need admin privileges to access this page.
+          </p>
+          <Link
             href="/"
             className="inline-block bg-[#FF5D39] text-white font-bold px-6 py-3 rounded-lg shadow-lg hover:opacity-90 transition-all"
           >
@@ -179,7 +182,7 @@ const DashboardPage = () => {
   // Show loading state while auth is being checked
   if (userLoading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+      <div className="w-full h-full layout py-10">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF5D39] mx-auto mb-4"></div>
@@ -192,101 +195,119 @@ const DashboardPage = () => {
 
   return (
     <VerificationGuard>
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
-      <h1 className="text-2xl sm:text-3xl font-extrabold text-black mb-4 sm:mb-6">Dashboard</h1>
+      <div className="w-full h-full layout py-10">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-black mb-4 sm:mb-6">
+          Dashboard
+        </h1>
 
-      {/* Quick navigation */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
-        <SafeLink
-          href="/dashboard/orders"
-          className="rounded-2xl border shadow bg-gradient-to-br from-[#FFF2EE] to-white p-4 sm:p-5 hover:shadow-md transition cursor-pointer"
-        >
-          <div className="text-black/70 text-xs sm:text-sm">Manage</div>
-          <div className="text-lg sm:text-xl font-bold text-black">Orders</div>
-          <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-black/60">
-            View and update order statuses
+        {/* Quick navigation */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <SafeLink
+            href="/dashboard/orders"
+            className="rounded-2xl border shadow bg-gradient-to-br from-[#FFF2EE] to-white p-4 sm:p-5 hover:shadow-md transition cursor-pointer"
+          >
+            <div className="text-black/70 text-xs sm:text-sm">Manage</div>
+            <div className="text-lg sm:text-xl font-bold text-black">
+              Orders
+            </div>
+            <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-black/60">
+              View and update order statuses
+            </div>
+          </SafeLink>
+          <SafeLink
+            href="/dashboard/admin"
+            className="rounded-2xl border shadow bg-gradient-to-br from-[#FFF8E5] to-white p-4 sm:p-5 hover:shadow-md transition cursor-pointer"
+          >
+            <div className="text-black/70 text-xs sm:text-sm">Manage</div>
+            <div className="text-lg sm:text-xl font-bold text-black">
+              Products
+            </div>
+            <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-black/60">
+              Add, edit, and delete products
+            </div>
+          </SafeLink>
+        </div>
+
+        {error && (
+          <div
+            className="mb-4 p-3 rounded border"
+            style={{
+              background: "#FFF4F1",
+              borderColor: "#FF5D39",
+              color: "#FF5D39",
+            }}
+          >
+            {error}
           </div>
-        </SafeLink>
-        <SafeLink
-          href="/dashboard/addProducts"
-          className="rounded-2xl border shadow bg-gradient-to-br from-[#FFF8E5] to-white p-4 sm:p-5 hover:shadow-md transition cursor-pointer"
-        >
-          <div className="text-black/70 text-xs sm:text-sm">Manage</div>
-          <div className="text-lg sm:text-xl font-bold text-black">Products</div>
-          <div className="mt-1 sm:mt-2 text-xs sm:text-sm text-black/60">
-            Add, edit, and delete products
+        )}
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="rounded-2xl border shadow bg-gradient-to-br from-[#FFF2EE] to-white p-4 sm:p-5">
+            <div className="text-black/70 text-xs sm:text-sm">
+              Today Revenue
+            </div>
+            <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-extrabold text-[#FF5D39]">
+              ${totals.daily.toFixed(2)}
+            </div>
+            <div className="mt-1 text-[10px] sm:text-xs text-black/50">
+              Paid orders only
+            </div>
           </div>
-        </SafeLink>
+          <div className="rounded-2xl border shadow bg-gradient-to-br from-[#FFF8E5] to-white p-4 sm:p-5">
+            <div className="text-black/70 text-xs sm:text-sm">This Month</div>
+            <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-extrabold text-[#F1A900]">
+              ${totals.monthly.toFixed(2)}
+            </div>
+            <div className="mt-1 text-[10px] sm:text-xs text-black/50">
+              Paid orders only
+            </div>
+          </div>
+          <div className="rounded-2xl border shadow bg-gradient-to-br from-[#F3F4F6] to-white p-4 sm:p-5">
+            <div className="text-black/70 text-xs sm:text-sm">This Year</div>
+            <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-extrabold text-black">
+              ${totals.yearly.toFixed(2)}
+            </div>
+            <div className="mt-1 text-[10px] sm:text-xs text-black/50">
+              Paid orders only
+            </div>
+          </div>
+        </div>
+
+        {/* Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div className="rounded-2xl border shadow bg-white p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h2 className="text-base sm:text-lg font-bold text-black">
+                Revenue (Last 7 days)
+              </h2>
+            </div>
+            <div className="h-40 sm:h-48 flex items-end gap-1.5 sm:gap-2">
+              {last7Days.map((b) => (
+                <Bar key={b.label} value={b.value} label={b.label} />
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border shadow bg-white p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <h2 className="text-base sm:text-lg font-bold text-black">
+                Revenue (Last 12 months)
+              </h2>
+            </div>
+            <div className="h-40 sm:h-48 flex items-end gap-1.5 sm:gap-2">
+              {last12Months.map((b, i) => (
+                <Bar key={`${b.label}-${i}`} value={b.value} label={b.label} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="mt-4 sm:mt-6 text-sm sm:text-base text-black">
+            Loading analytics...
+          </div>
+        )}
       </div>
-
-      {error && (
-        <div
-          className="mb-4 p-3 rounded border"
-          style={{
-            background: "#FFF4F1",
-            borderColor: "#FF5D39",
-            color: "#FF5D39",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
-        <div className="rounded-2xl border shadow bg-gradient-to-br from-[#FFF2EE] to-white p-4 sm:p-5">
-          <div className="text-black/70 text-xs sm:text-sm">Today Revenue</div>
-          <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-extrabold text-[#FF5D39]">
-            ${totals.daily.toFixed(2)}
-          </div>
-          <div className="mt-1 text-[10px] sm:text-xs text-black/50">Paid orders only</div>
-        </div>
-        <div className="rounded-2xl border shadow bg-gradient-to-br from-[#FFF8E5] to-white p-4 sm:p-5">
-          <div className="text-black/70 text-xs sm:text-sm">This Month</div>
-          <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-extrabold text-[#F1A900]">
-            ${totals.monthly.toFixed(2)}
-          </div>
-          <div className="mt-1 text-[10px] sm:text-xs text-black/50">Paid orders only</div>
-        </div>
-        <div className="rounded-2xl border shadow bg-gradient-to-br from-[#F3F4F6] to-white p-4 sm:p-5">
-          <div className="text-black/70 text-xs sm:text-sm">This Year</div>
-          <div className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-extrabold text-black">
-            ${totals.yearly.toFixed(2)}
-          </div>
-          <div className="mt-1 text-[10px] sm:text-xs text-black/50">Paid orders only</div>
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        <div className="rounded-2xl border shadow bg-white p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <h2 className="text-base sm:text-lg font-bold text-black">
-              Revenue (Last 7 days)
-            </h2>
-          </div>
-          <div className="h-40 sm:h-48 flex items-end gap-1.5 sm:gap-2">
-            {last7Days.map((b) => (
-              <Bar key={b.label} value={b.value} label={b.label} />
-            ))}
-          </div>
-        </div>
-        <div className="rounded-2xl border shadow bg-white p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <h2 className="text-base sm:text-lg font-bold text-black">
-              Revenue (Last 12 months)
-            </h2>
-          </div>
-          <div className="h-40 sm:h-48 flex items-end gap-1.5 sm:gap-2">
-            {last12Months.map((b, i) => (
-              <Bar key={`${b.label}-${i}`} value={b.value} label={b.label} />
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {loading && <div className="mt-4 sm:mt-6 text-sm sm:text-base text-black">Loading analytics...</div>}
-    </div>
     </VerificationGuard>
   );
 };

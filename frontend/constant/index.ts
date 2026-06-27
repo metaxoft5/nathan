@@ -26,8 +26,4 @@ export const Links = [
     label: "Terms & Conditions",
     href: "/terms-and-conditions",
   },
-  {
-    label: "Support",
-    href: "/support",
-  },
 ];

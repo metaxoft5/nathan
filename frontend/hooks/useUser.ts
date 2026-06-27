@@ -1,7 +1,13 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
-import { API_URL, authHeaders } from "@/utils/api";
-import axios from "axios";
+import { useEffect, useState, useRef } from "react";
+import {
+  getToken,
+  getUser,
+  setUser,
+  removeToken,
+  removeUser,
+} from "@/utils/tokenUtils";
+import { identifyUser } from "./useTrackdeskEvent";
 
 export type User = {
   id: string;
@@ -13,108 +19,76 @@ export type User = {
   // add other fields as needed
 };
 
-interface MeResponse {
-  user: User;
+// Global function to clear user cache (call this after login/logout)
+let userCache: { user: User | null; timestamp: number } | null = null;
+export function clearUserCache() {
+  userCache = null;
 }
 
-// Cache for user data to reduce API calls
-let userCache: { user: User | null; timestamp: number } | null = null;
-const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
-
 export function useUser() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const lastFetchRef = useRef<number>(0);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchUser = useCallback(async (forceRefresh = false) => {
-    const now = Date.now();
-    
-    // Check cache first (unless force refresh)
-    if (!forceRefresh && userCache && (now - userCache.timestamp) < CACHE_DURATION) {
-      setUser(userCache.user);
-      setLoading(false);
-      return;
-    }
-
-    // Prevent multiple simultaneous requests
-    if (now - lastFetchRef.current < 5000) { // 5 second cooldown
-      return;
-    }
-
-    lastFetchRef.current = now;
-    
-    try {
-      const res = await axios.get<MeResponse>(`${API_URL}/auth/me`, {
-        withCredentials: true,
-        headers: authHeaders(),
-      });
-      
-      const userData = res.data.user;
-      setUser(userData);
-      setError(null);
-      
-      // Update cache
-      userCache = { user: userData, timestamp: now };
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'response' in err && 
-          err.response && typeof err.response === 'object' && 'status' in err.response &&
-          err.response.status === 429) {
-        // Rate limited - set error and schedule retry
-        setError('We\'re experiencing high traffic. Please wait a moment and try again.');
-        
-        // Clear any existing retry timeout
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
+  // Load user from localStorage on mount
+  useEffect(() => {
+    const loadUser = () => {
+      try {
+        const token = getToken();
+        if (!token) {
+          // No token = anonymous user
+          setUserState(null);
+          setLoading(false);
+          return;
         }
-        
-        // Retry after 30 seconds
-        retryTimeoutRef.current = setTimeout(() => {
-          setError(null);
-          fetchUser(true);
-        }, 30000);
-      } else {
-        setUser(null);
-        setError(null);
+
+        // Get user from localStorage
+        const userData = getUser();
+        if (userData) {
+          setUserState(userData as User);
+
+          // Identify user in Trackdesk when user data is loaded
+          if (typeof window !== "undefined" && window.Trackdesk) {
+            identifyUser(userData.id, {
+              email: userData.email,
+              name:
+                userData.name ||
+                `${(userData as any).firstName || ""} ${
+                  (userData as any).lastName || ""
+                }`.trim(),
+              role: userData.role,
+              isVerified: userData.isVerified,
+            });
+          }
+        } else {
+          // Token exists but no user data - clear token
+          removeToken();
+          setUserState(null);
+        }
+        setLoading(false);
+      } catch (err) {
+        console.error("Error loading user:", err);
+        setUserState(null);
+        setLoading(false);
       }
-    }
+    };
+
+    loadUser();
   }, []);
 
-  const refreshUser = async () => {
-    setLoading(true);
-    setError(null);
-    // Clear cache to force fresh data
-    userCache = null;
-    await fetchUser(true);
-    setLoading(false);
+  const refreshUser = () => {
+    // Refresh user from localStorage
+    const userData = getUser();
+    setUserState(userData as User | null);
   };
 
   const clearUser = () => {
-    setUser(null);
-    setLoading(false);
+    setUserState(null);
     setError(null);
+    removeToken();
+    removeUser();
     userCache = null;
-    
-    // Clear retry timeout
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current);
-      retryTimeoutRef.current = null;
-    }
   };
-
-  useEffect(() => {
-    fetchUser().finally(() => {
-      setLoading(false);
-    });
-    
-    // Cleanup on unmount
-    return () => {
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-      }
-    };
-  }, [fetchUser]);
 
   return { user, loading, error, refreshUser, clearUser };
 }

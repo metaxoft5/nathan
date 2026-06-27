@@ -29,7 +29,7 @@ const Fundraising = () => {
         className="h-full w-full layout"
       >
         <AnimatedText
-          text="Imagine what you could raise"
+          text="Imagine what you can raise"
           className="text-3xl md:text-4xl lg:text-5xl font-bold text-black text-center"
           splitBy="word"
           duration={0.6}
@@ -85,12 +85,16 @@ const Fundraising = () => {
             ${calculateAmount(participants).toLocaleString()}
           </h2>
           <h5 className="text-xs md:text-sm lg:text-base font-medium text-black/30 w-full md:w-3/4 lg:w-1/2 text-center px-2">
-            Sellers typically raise $100 over a four day fundraiser
+            Sellers typically raise $180 over a four day fundraiser
           </h5>
           <CustomButton
             title="Get Started Now"
-            onClick={() => {}}
             className="w-full md:w-1/2 lg:w-1/3 xl:w-1/4 mt-4 md:mt-6 lg:mt-8"
+            // onClick={() => {
+            //   router.push("/coming-soon");
+            // }}
+            // href="https://licoriceaffiliate.licorice4good.com/"
+            href="https://lp.constantcontactpages.com/sl/kaaCahu/fundraise"
           />
         </div>
       </AnimatedSection>

@@ -1,67 +1,174 @@
-"use client"
-import React from "react";
+"use client";
+import React, { useState } from "react";
 import CustomButton from "../custom/CustomButton";
 import FaqList from "@/components/shared/FaqList";
-import { Facebook, Instagram, Linkedin, Twitter } from "lucide-react";
+import { Facebook, Instagram } from "lucide-react";
 import { Links } from "@/constant";
 import Link from "next/link";
-import axios from "axios";
-import { useRouter } from "next/navigation";
-import { useUser } from "@/hooks/useUser";
 
 const Footer = () => {
-  const router = useRouter()
-  const {user} = useUser()
-  const handleAuthButtonClick = () =>{
-    if(user){
-      const API_URL = process.env.NEXT_PUBLIC_API_URL;
-      axios.post(`${API_URL}/auth/logout`, {}, { withCredentials: true })
-        .then(()=>router.replace("/"))
-        .catch(()=>{})
-    }else{
-      router.push("/auth/register")
+  const [email, setEmail] = useState("");
+  const [subscribeStatus, setSubscribeStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const handleNewsletterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Reset messages
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    if (!email || !email.includes("@")) {
+      setSubscribeStatus("error");
+      setErrorMessage("Please enter a valid email address");
+      setTimeout(() => {
+        setSubscribeStatus("idle");
+        setErrorMessage("");
+      }, 4000);
+      return;
     }
-  }
+
+    setSubscribeStatus("loading");
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/subscribe`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            source: "footer",
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSubscribeStatus("success");
+        // Check if already subscribed
+        if (
+          data.alreadySubscribed ||
+          data.message === "Email is already subscribed"
+        ) {
+          setSuccessMessage(
+            "You're already subscribed! Check your email for updates."
+          );
+        } else {
+          setSuccessMessage(
+            "Successfully subscribed! Please check your email for confirmation."
+          );
+        }
+        setEmail("");
+        setTimeout(() => {
+          setSubscribeStatus("idle");
+          setSuccessMessage("");
+        }, 6000);
+      } else {
+        setSubscribeStatus("error");
+        // Show specific error message from API
+        const errorMsg =
+          data.error ||
+          data.message ||
+          "Failed to subscribe. Please try again.";
+        setErrorMessage(errorMsg);
+        setTimeout(() => {
+          setSubscribeStatus("idle");
+          setErrorMessage("");
+        }, 4000);
+      }
+    } catch (error) {
+      console.error("Error subscribing email:", error);
+      setSubscribeStatus("error");
+      setErrorMessage(
+        "Network error. Please check your connection and try again."
+      );
+      setTimeout(() => {
+        setSubscribeStatus("idle");
+        setErrorMessage("");
+      }, 4000);
+    }
+  };
 
   return (
-    <footer className="bg-primary layout  z-50 mb-10 h-auto min-h-[500px] w-full border-t border-white">
+    <footer className="bg-primary layout  z-50 mb-10 h-auto min-h-[200px] w-full">
       <div className="flex flex-col md:flex-row justify-between items-start py-8 md:py-10 gap-8 md:gap-0">
         <div className="flex flex-col justify-center items-start  w-full md:w-[48%] h-full pb-8 md:pb-0 md:pr-6">
-          <CustomButton
-            title={user ? "Logout" : "Sign up"}
-            className="bg-white !text-primary font-inter font-bold rounded-md"
-            onClick={handleAuthButtonClick}
-          />
-          <p className="text-white text-16 font-inter font-bold pt-8 md:pt-10 w-full">
-            If there are questions you want to ask, we will answer all your
-            question
+          <p className="text-white text-16 font-inter font-bold w-full">
+            Still have questions? Enter your email address and an account
+            executive will be in touch
           </p>
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-8 md:pt-10 w-full">
+          <form
+            onSubmit={handleNewsletterSubmit}
+            className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-8 md:pt-10 w-full"
+          >
             <input
-              type="text"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email"
-              className="bg-transparent border-b border-white w-full text-white placeholder:text-white placeholder:text-16 placeholder:font-inter"
+              className="bg-transparent border-b border-white w-full text-white placeholder:text-white placeholder:text-16 placeholder:font-inter pb-2 focus:outline-none focus:border-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              required
+              disabled={subscribeStatus === "loading"}
             />
             <CustomButton
-              title="Join now"
-              className="!bg-primary !text-white font-inter font-bold rounded-md w-full sm:w-1/2 mt-4 sm:mt-0"
+              title={subscribeStatus === "success" ? "Subscribed!" : "Join now"}
+              loading={subscribeStatus === "loading"}
+              loadingText="Subscribing..."
+              className={`!bg-primary !text-white font-inter font-bold rounded-md w-full sm:w-1/2 mt-4 sm:mt-0 hover:!bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                subscribeStatus === "success" ? "!bg-green-500" : ""
+              }`}
+              type="submit"
+              disabled={
+                subscribeStatus === "loading" || subscribeStatus === "success"
+              }
             />
-          </div>
+          </form>
+          {subscribeStatus === "error" && errorMessage && (
+            <p className="text-red-300 text-sm mt-2 animate-pulse">
+              {errorMessage}
+            </p>
+          )}
+          {subscribeStatus === "success" && successMessage && (
+            <p className="text-green-300 text-sm mt-2 font-medium">
+              {successMessage}
+            </p>
+          )}
         </div>
-        <div className="w-full md:w-[52%] flex flex-col items-center md:items-end justify-center px-0 md:px-6">
+        {/* <div className="w-full md:w-[52%] flex flex-col items-center md:items-end justify-center px-0 md:px-6">
           <p className="text-white text-16 font-inter font-bold mb-8 md:mb-10 text-center md:text-left max-w-full md:max-w-md w-full">
             If there are questions you want to ask, we will answer all your
             questions
           </p>
           <FaqList />
-        </div>
+        </div> */}
       </div>
       <div className="w-full flex flex-col md:flex-row items-center justify-between py-5 border-t border-white gap-6 md:gap-0">
         <div className="flex items-center justify-center md:justify-start w-full md:w-[20%] gap-4 mb-4 md:mb-0">
-          <Facebook className="text-white text-24" />
-          <Instagram className="text-white text-24" />
-          <Twitter className="text-white text-24" />
-          <Linkedin className="text-white text-24" />
+          <a
+            href="https://www.facebook.com/southern.sweet.sour"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white hover:text-secondary transition-colors duration-300 cursor-pointer"
+            aria-label="Facebook"
+          >
+            <Facebook className="text-24 w-6 h-6" />
+          </a>
+          <a
+            href="https://www.instagram.com/southern.sweet.sour"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white hover:text-secondary transition-colors duration-300 cursor-pointer"
+            aria-label="Instagram"
+          >
+            <Instagram className="text-24 w-6 h-6" />
+          </a>
         </div>
         <div className="flex flex-wrap items-center justify-center w-full md:w-[30%] gap-4 md:gap-8">
           {Links.map((link) => {

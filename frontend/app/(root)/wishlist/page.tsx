@@ -1,8 +1,7 @@
 'use client'
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useWishlistStore, WishlistItem } from '@/store/wishlistStore';
 import { useCartStore } from '@/store/cartStore';
-import { useUser } from '@/hooks/useUser';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Heart, Trash2, ShoppingCart } from 'lucide-react';
@@ -15,7 +14,7 @@ const WHITE = '#FFFFFF';
 
 const WishlistPage = () => {
   const router = useRouter();
-  const { user, loading: userLoading } = useUser();
+  // Removed authentication requirement - wishlist works with localStorage
   const { 
     items, 
     removeItem, 
@@ -24,6 +23,43 @@ const WishlistPage = () => {
   } = useWishlistStore();
   
   const { addItem } = useCartStore();
+
+  // Helper function to normalize image URLs
+  const normalizeImageSrc = (src?: string | null) => {
+    if (!src) return "/assets/images/slider.png";
+
+    // Handle static assets (served from frontend)
+    if (src.startsWith("/assets")) {
+      return src;
+    }
+
+    // Handle uploaded images (served from backend)
+    if (src.startsWith("/uploads") || src.startsWith("uploads")) {
+      const path = src.startsWith("/uploads") ? src : `/${src}`;
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        console.error("NEXT_PUBLIC_API_URL is not defined");
+        return path;
+      }
+      return `${apiUrl}${path}`;
+    }
+
+    // Handle full URLs (already complete)
+    if (src.startsWith("http://") || src.startsWith("https://")) {
+      return src;
+    }
+
+    // Default case - assume it needs API URL
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+      console.error("NEXT_PUBLIC_API_URL is not defined");
+      return src;
+    }
+
+    // Ensure src starts with / for proper path construction
+    const normalizedSrc = src.startsWith("/") ? src : `/${src}`;
+    return `${apiUrl}${normalizedSrc}`;
+  };
   const [loadingStates, setLoadingStates] = React.useState<{
     clearAll: boolean;
     movingToCart: { [key: string]: boolean };
@@ -34,13 +70,7 @@ const WishlistPage = () => {
     removing: {}
   });
 
-  // Authentication check
-  useEffect(() => {
-    if (!userLoading && !user) {
-      router.push("/auth/login");
-      return;
-    }
-  }, [user, userLoading, router]);
+  // Removed authentication check - wishlist is public
 
   const handleMoveToCart = async (item: WishlistItem) => {
     setLoadingStates(prev => ({
@@ -54,7 +84,7 @@ const WishlistPage = () => {
         productName: item.productName,
         quantity: 1,
         price: item.price,
-        imageUrl: item.imageUrl,
+        imageUrl: normalizeImageSrc(item.imageUrl),
         sku: item.sku
       });
       removeItem(item.productId);
@@ -99,23 +129,7 @@ const WishlistPage = () => {
     }
   };
 
-  // Show loading while checking authentication
-  if (userLoading) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF5D39] mx-auto mb-4"></div>
-          <p className="text-black text-lg">Loading wishlist...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Redirect if not authenticated
-  if (!user) {
-    return null;
-  }
-
+  // Wishlist is now public - works with localStorage for guests
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -188,22 +202,19 @@ const WishlistPage = () => {
                   }}
                 >
                   {/* Product Image */}
-                  <div className="relative">
-                    {item.imageUrl ? (
-                      <Image
-                        src={item.imageUrl}
-                        alt={item.productName}
-                        width={400}
-                        height={300}
-                        className="w-full h-48 object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-48 bg-gray-100 flex items-center justify-center">
-                        <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke={BLACK} style={{ opacity: 0.3 }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                    )}
+                  <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+                    <Image
+                      src={normalizeImageSrc(item.imageUrl)}
+                      alt={item.productName}
+                      width={400}
+                      height={300}
+                      className="w-full h-48 object-contain"
+                      onError={(e) => {
+                        // Fallback to default image if the image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.src = "/assets/images/slider.png";
+                      }}
+                    />
                     <button
                       onClick={() => handleRemoveItem(item.productId)}
                       disabled={loadingStates.removing[item.productId]}

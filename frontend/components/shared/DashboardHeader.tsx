@@ -1,10 +1,11 @@
 "use client";
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useUser } from "@/hooks/useUser";
 import axios from "axios";
-import { API_URL, authHeaders, clearAuthToken } from "@/utils/api";
+import { useUser } from "@/hooks/useUser";
+import { getToken, removeToken, removeUser } from "@/utils/tokenUtils";
 
 const NavLink = ({
   href,
@@ -19,7 +20,7 @@ const NavLink = ({
 }) => {
   const pathname = usePathname();
   const isActive = pathname.startsWith(href);
-  
+
   if (disabled) {
     return (
       <span
@@ -33,7 +34,7 @@ const NavLink = ({
       </span>
     );
   }
-  
+
   return (
     <Link
       href={href}
@@ -49,39 +50,55 @@ const NavLink = ({
   );
 };
 
-const DashboardHeader = () => {
-  const { user, loading: userLoading, clearUser } = useUser();
-  const router = useRouter();
+export default function DashboardHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
-
-  const onLogout = async () => {
-    try {
-      await axios.post(`${API_URL}/auth/logout`, {}, {
-        withCredentials: true,
-        headers: authHeaders(),
-      });
-      clearAuthToken();
-      clearUser(); // Clear user state immediately
-      router.replace("/");
-    } catch {
-      // Even if logout fails, clear local state
-      clearUser();
-      router.replace("/");
-    }
-  };
+  const [logoutLoading, setLogoutLoading] = useState(false);
+  const router = useRouter();
+  const { user, clearUser } = useUser();
 
   // Close menu on navigation
   const handleNavClick = () => setMenuOpen(false);
 
+  const handleLogout = async () => {
+    setLogoutLoading(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL;
+      const token = getToken();
+      await axios.post(`${API_URL}/auth/logout`, {}, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      removeToken(); // Clear token from localStorage
+      removeUser(); // Clear user from localStorage
+      clearUser(); // Clear user state immediately
+      router.push("/"); // Redirect to home page
+    } catch (err) {
+      console.error("Logout failed:", err);
+      // Even if logout fails, clear local state
+      removeToken();
+      removeUser();
+      clearUser();
+      router.push("/");
+    } finally {
+      setLogoutLoading(false);
+    }
+  };
+
   return (
     <div className="w-full bg-primary sticky top-0 z-30 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between border-b border-white/10">
+      <div className="h-14 sm:h-16 flex items-center justify-between border-b border-white/10 layout">
         {/* Left: Logo/Title */}
         <div className="flex items-center gap-2">
-          <span className="text-lg sm:text-xl font-extrabold text-white drop-shadow">
-            Dashboard
-          </span>
-          <span className="text-[10px] sm:text-xs text-white/80 hidden sm:inline">Admin</span>
+          <Link
+            href="/dashboard/admin"
+            className="text-lg sm:text-xl font-extrabold text-white drop-shadow"
+          >
+            <Image
+              src="/assets/svg/logo.svg"
+              alt="logo"
+              width={140}
+              height={48}
+            />
+          </Link>
         </div>
 
         {/* Hamburger for mobile */}
@@ -115,35 +132,24 @@ const DashboardHeader = () => {
 
         {/* Desktop Nav */}
         <nav className="hidden sm:flex items-center gap-1.5 sm:gap-2">
-          {/* <NavLink href="/" label="Home" /> */}
           <NavLink href="/shop" label="Shop" />
-          <NavLink href="/dashboard" label="Overview" disabled={userLoading} />
-          <NavLink href="/dashboard/orders" label="Orders" disabled={userLoading} />
-          <NavLink href="/dashboard/addProducts" label="Products" disabled={userLoading} />
+          <NavLink href="/dashboard" label="Overview" />
+          <NavLink href="/dashboard/orders" label="Orders" />
+          <NavLink href="/dashboard/admin" label="Products" />
         </nav>
 
         {/* Desktop User Actions */}
         <div className="hidden sm:flex items-center gap-2 sm:gap-3">
-          {user && user.role === "admin" ? (
-            <>
-              <span className="text-xs sm:text-sm text-white/90">
-                {user.name} ({user.role})
-              </span>
-              <button
-                onClick={onLogout}
-                className="px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm bg-white/15 text-white hover:bg-white/20 transition shadow-[0_0_0_1px_rgba(255,255,255,0.25)]"
-              >
-                Logout
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => router.push("/auth/login")}
-              className="px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm bg-white/15 text-white hover:bg-white/20 transition shadow-[0_0_0_1px_rgba(255,255,255,0.25)]"
-            >
-              Login
-            </button>
-          )}
+          <span className="text-xs sm:text-sm text-white/90">
+            {user?.name || user?.email || "Admin User"}
+          </span>
+          <button 
+            onClick={handleLogout}
+            disabled={logoutLoading}
+            className="px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm bg-white/15 text-white hover:bg-white/20 transition shadow-[0_0_0_1px_rgba(255,255,255,0.25)] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {logoutLoading ? "Logging out..." : "Logout"}
+          </button>
         </div>
       </div>
 
@@ -151,67 +157,37 @@ const DashboardHeader = () => {
       {menuOpen && (
         <div className="sm:hidden bg-primary border-t border-white/10 px-3 sm:px-4 pb-4">
           <nav className="flex flex-col gap-1 mt-2">
-            {/* <NavLink
-              href="/"
-              label="Home"
-              onClick={handleNavClick}
-            /> */}
-            <NavLink
-              href="/shop"
-              label="Shop"
-              onClick={handleNavClick}
-            />
+            <NavLink href="/shop" label="Shop" onClick={handleNavClick} />
             <NavLink
               href="/dashboard"
               label="Overview"
               onClick={handleNavClick}
-              disabled={userLoading}
             />
             <NavLink
               href="/dashboard/orders"
               label="Orders"
               onClick={handleNavClick}
-              disabled={userLoading}
             />
             <NavLink
-              href="/dashboard/addProducts"
+              href="/dashboard/admin"
               label="Products"
               onClick={handleNavClick}
-              disabled={userLoading}
             />
           </nav>
           <div className="flex flex-col gap-2 mt-3">
-            {user && user.role === "admin" ? (
-              <>
-                <span className="text-xs sm:text-sm text-white/90">
-                  {user.name} ({user.role})
-                </span>
-                <button
-                  onClick={() => {
-                    onLogout();
-                    setMenuOpen(false);
-                  }}
-                  className="w-full px-3 py-1.5 rounded-md text-xs sm:text-sm bg-white/15 text-white hover:bg-white/20 transition shadow-[0_0_0_1px_rgba(255,255,255,0.25)]"
-                >
-                  Logout
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => {
-                  router.push("/auth/login");
-                  setMenuOpen(false);
-                }}
-                className="w-full px-3 py-1.5 rounded-md text-xs sm:text-sm bg-white/15 text-white hover:bg-white/20 transition shadow-[0_0_0_1px_rgba(255,255,255,0.25)]"
-              >
-                Login
-              </button>
-            )}
+            <span className="text-xs sm:text-sm text-white/90">
+              {user?.name || user?.email || "Admin User"}
+            </span>
+            <button
+              onClick={handleLogout}
+              disabled={logoutLoading}
+              className="w-full px-3 py-1.5 rounded-md text-xs sm:text-sm bg-white/15 text-white hover:bg-white/20 transition shadow-[0_0_0_1px_rgba(255,255,255,0.25)] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {logoutLoading ? "Logging out..." : "Logout"}
+            </button>
           </div>
         </div>
       )}
     </div>
   );
-};
-
-export default DashboardHeader;
+}

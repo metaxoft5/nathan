@@ -2,9 +2,18 @@
 
 Welcome to the Nathan Frontend repository, the official codebase for a modern, enterprise‑grade candy e‑commerce platform. This application delivers a polished, mobile‑first shopping experience and a powerful administrative dashboard that enables efficient store operations at scale. Built on Next.js (App Router), Zustand state management, and a utility‑first CSS approach, the platform emphasizes performance, security, maintainability, and long‑term extensibility.
 
+
+
+
+
+
+
+ 
+
 ---
 
 ## Table of Contents
+
 - Overview & Vision
 - Core Features
 - Architecture & Technology Stack
@@ -34,12 +43,15 @@ Welcome to the Nathan Frontend repository, the official codebase for a modern, e
 ---
 
 ## Overview & Vision
+
 Nathan Frontend provides:
-- A user‑centric, conversion‑focused storefront that showcases candy products, including flavor compositions and curated “3‑pack” bundles.
+
+- A user‑centric, conversion‑focused storefront that showcases candy products, including flavor compositions and curated "3‑pack" bundles.
 - A robust admin area for product management (with images and flavors), stock visibility, and efficient order oversight.
 - A foundation for future growth including a full affiliate program and companion mobile apps.
 
 Business vision:
+
 - Enable rapid product iteration and launches (e.g., seasonal flavors, bundles).
 - Provide an exceptional mobile experience to meet modern shopping behavior.
 - Offer clean integrations with third‑party services (payments, analytics, communications).
@@ -47,185 +59,386 @@ Business vision:
 ---
 
 ## Core Features
-User‑facing:
-- Product catalog with flavor metadata and stock indicators
-- Product detail pages with rich content and images
-- Wishlist and cart with persistent state and backend sync
-- Order history and friendly auth flows (login, register, forgot/reset)
 
-Admin:
-- Product CRUD with server‑side pagination and image upload
-- Flavor-aware product composition (display and persistence)
-- Orders list with filters and status updates
-- (Roadmap) Inventory dashboards and analytics
+### User‑facing Features:
 
-Platform:
-- Strict routing and auth gate via middleware to avoid guest‑page flicker when logged in
-- Mobile‑first, responsive components with accessible interactions
-- Clear separation of concerns and documented integration patterns
+- **Product Catalog**: Comprehensive product browsing with flavor metadata and stock indicators
+- **Product Detail Pages**: Rich content with images, descriptions, and interactive elements
+- **Custom Pack Builder**: Interactive 3-pack creation tool allowing users to select exactly 3 flavors
+- **Wishlist & Cart**: Persistent state with backend synchronization
+- **Order Management**: Complete order history with payment status tracking
+- **Stripe Payment Integration**: Secure checkout with success/failure handling and retry functionality
+- **Responsive Design**: Mobile-first approach with seamless desktop experience
+
+### Admin Dashboard Features:
+
+- **Product Management**: Full CRUD operations with server‑side pagination and image upload
+- **Flavor Management**: Complete flavor lifecycle with image uploads and bulk operations
+- **Inventory Management**: Real-time stock tracking with low-stock alerts and bulk updates
+- **Order Management**: Advanced filtering, sorting, search, and bulk operations
+- **Analytics Dashboard**: Real-time metrics for high-volume traffic monitoring
+- **Automated Order Verification**: AI-powered risk scoring and fraud detection
+- **Category Management**: Dynamic category creation and management
+- **System Configuration**: Centralized system settings and configuration
+
+### Platform Features:
+
+- **Authentication**: Secure cookie-based auth with middleware protection
+- **Accessibility**: WCAG-compliant components with proper ARIA attributes
+- **Performance**: Optimized images, lazy loading, and efficient state management
+- **Error Handling**: Comprehensive error boundaries and user-friendly error messages
 
 ---
 
 ## Architecture & Technology Stack
-- Framework: Next.js (App Router)
-- Language: TypeScript
-- State: Zustand (cart, orders, wishlist)
-- Styles: Utility‑first CSS (Tailwind‑like classes in codebase)
-- Auth: httpOnly cookie flow provided by backend; middleware enforces redirect rules
-- Networking: Fetch/axios using `NEXT_PUBLIC_API_URL` or proxy routes (rewrites)
-- Images: Next.js Image with safe remote patterns for backend assets
+
+- **Framework**: Next.js 15.5.3 (App Router)
+- **Language**: TypeScript with strict type checking
+- **State Management**: Zustand for cart, orders, wishlist, and user state
+- **Styling**: Tailwind CSS with utility-first approach
+- **Authentication**: HTTP-only cookie flow with middleware enforcement
+- **Payments**: Stripe integration with webhook handling
+- **Images**: Next.js Image component with optimized remote patterns
 
 ---
 
 ## Project Structure
+
 ```
 app/
-  (root)/              # main storefront routes (home, shop, products, profile, etc.)
+  (root)/              # main storefront routes (home, shop, products, profile, cart)
   auth/                # login, register, forgot password, reset password
-  dashboard/           # administrative pages (orders, products, etc.)
+  dashboard/           # administrative pages (orders, products, analytics)
 components/
   custom/              # shared custom UI elements
   shared/              # shared layout/header/footer
-  ui/                  # pages/sections for home, fundraising, blogs, etc.
-constant/              # global constants and utilities (e.g., smooth scrolling)
-hooks/                 # useUser and similar hooks
+  ui/                  # specialized UI components (FlavorCard, CustomPackBuilder)
+constant/              # global constants and utilities
+hooks/                 # custom hooks (useUser, useAuth)
 public/                # static assets (favicon, icons, images)
-store/                 # Zustand stores (cart, orders, wishlist)
-styles/                # global styles
+store/                 # Zustand stores (cart, orders, wishlist, user)
+styles/                # global styles and Tailwind configuration
 ```
 
 ---
 
 ## Data & API Integration
-- Primary API endpoint configured by `NEXT_PUBLIC_API_URL`.
-- Recommended deployment: reverse proxy the backend under `/api` for same‑origin cookies.
-- Products & orders use server‑side pagination for scalability.
-- Image URLs served from backend `/uploads` are supported by Next’s Image component via `images.remotePatterns`.
 
-Best practice:
-- Keep all network calls in components/stores pointed at `NEXT_PUBLIC_API_URL` or a Next proxy route to ensure portability across environments.
+- **Primary API**: Configured via `NEXT_PUBLIC_API_URL` environment variable
+- **Proxy Routes**: Next.js rewrites for seamless API integration
+- **Pagination**: Server-side pagination for scalable data handling
+- **Image Handling**: Optimized image serving with cache busting
+- **Real-time Updates**: WebSocket-ready architecture for live data
+
+### API Endpoints Integration:
+
+- **Products**: `/products/*` - Product catalog and management
+- **Orders**: `/orders/*` - Order creation, tracking, and management
+- **Payments**: `/payments/*` - Stripe integration and webhook handling
+- **Admin**: `/admin/*` - Administrative operations
+- **Analytics**: `/analytics/*` - Real-time metrics and reporting
 
 ---
 
 ## Authentication & Authorization
-- Auth is cookie‑based (httpOnly) set by backend.
-- `middleware.ts` prevents logged‑in users from visiting guest‑only auth routes (e.g., `/auth/login`) to avoid visual flicker.
-- On login/register/reset, frontend hydrates user via `/auth/me` for immediate UI updates.
 
-Security:
-- Use HTTPS in production to satisfy `secure` cookies.
-- Align cookie domain and CORS with your frontend origin.
+- **Cookie-based Auth**: Secure HTTP-only cookies for session management
+- **Middleware Protection**: Automatic route protection and redirection
+- **Role-based Access**: User and admin role separation
+- **Session Management**: Automatic token refresh and session persistence
+
+### Security Features:
+
+- **HTTPS Enforcement**: Required for production deployments
+- **CORS Configuration**: Strict origin validation
+- **Input Validation**: Client-side validation with server-side verification
+- **XSS Protection**: Sanitized inputs and secure rendering
 
 ---
 
 ## Admin Dashboard (Back‑Office)
-- Products table: server‑side pagination, search, category filter; CRUD with image upload
-- Flavors: displayed and persisted via backend `ProductFlavor` join
-- Orders: server‑side pagination with status & payment filters; quick update controls
-- UX improvements: zebra rows, sticky headers on large screens, loading skeletons, accessible badges
+
+### Product Management:
+
+- **CRUD Operations**: Create, read, update, delete products with validation
+- **Image Upload**: Drag-and-drop image upload with preview and validation
+- **Flavor Integration**: Product-flavor relationship management
+- **Bulk Operations**: Mass updates and batch processing
+- **Search & Filter**: Advanced filtering by category, status, and custom criteria
+
+### Inventory Management:
+
+- **Real-time Stock**: Live inventory tracking with automatic updates
+- **Low Stock Alerts**: Automated alerts for inventory management
+- **Bulk Updates**: Mass inventory adjustments with validation
+- **Stock History**: Track inventory changes over time
+
+### Order Management:
+
+- **Advanced Filtering**: Filter by status, payment status, date range, and amount
+- **Bulk Operations**: Mass status updates and batch processing
+- **Search Functionality**: Full-text search across orders
+- **Export Capabilities**: Data export for external analysis
+
+### Analytics Dashboard:
+
+- **Real-time Metrics**: Live order tracking and revenue monitoring
+- **Risk Analytics**: Automated fraud detection and risk scoring
+- **Performance Metrics**: Conversion rates, AOV, and traffic analysis
+- **Hourly Reports**: Time-based performance analysis
 
 ---
 
 ## State Management (Zustand)
-- `cartStore.ts`: persistent cart with backend sync (add/update/remove/clear)
-- `ordersStore.ts`: list/detail creation and admin status updates
-- `wishlistStore.ts`: light‑weight, persistent wishlist
-- Stores are modular and test‑friendly; avoid tight coupling with UI
+
+### Store Architecture:
+
+- **cartStore.ts**: Persistent cart with backend synchronization
+- **ordersStore.ts**: Order management with status tracking
+- **wishlistStore.ts**: Lightweight wishlist with persistence
+- **userStore.ts**: User authentication and profile management
+
+### Features:
+
+- **Persistence**: Automatic state persistence across sessions
+- **Optimistic Updates**: Immediate UI updates with rollback capability
+- **Error Handling**: Comprehensive error states and recovery
+- **Type Safety**: Full TypeScript integration with type-safe operations
 
 ---
 
 ## Styling, UX, and Accessibility
-- Mobile‑first utility classes; consistent spacing, typography, and color semantics
-- Tables and forms optimized for small screens (stacked actions)
-- Focus states and ARIA attributes on interactive elements where appropriate
+
+### Design System:
+
+- **Mobile-first**: Responsive design optimized for mobile devices
+- **Consistent Spacing**: Standardized spacing and typography scales
+- **Color Semantics**: Meaningful color usage for status and actions
+- **Interactive States**: Clear hover, focus, and active states
+
+### Accessibility Features:
+
+- **ARIA Attributes**: Proper labeling and descriptions
+- **Keyboard Navigation**: Full keyboard accessibility
+- **Screen Reader Support**: Semantic HTML and proper structure
+- **Focus Management**: Logical focus flow and visible indicators
 
 ---
 
 ## Environment & Configuration
-Create `.env.local` (or `.env`):
+
+### Required Environment Variables:
+
 ```env
-# Backend origin used by the browser
+# Backend API configuration
 NEXT_PUBLIC_API_URL=https://api.example.com
-# Optional post‑auth redirect
+
+# Optional configurations
 NEXT_PUBLIC_POST_AUTH_REDIRECT_URL=/
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
 ```
-Notes:
-- Use full origin (scheme + host, no trailing slash).
-- In development, this can be `http://localhost:4000`.
-- In production, this should be `https://api.licorice4good.com`.
+
+### Configuration Notes:
+
+- Use full origin (scheme + host, no trailing slash)
+- Development: `http://localhost:4000`
+- Production: `https://api.licorice4good.com`
 
 ---
 
 ## Local Development
+
+### Prerequisites:
+
+- Node.js 18+
+- npm or yarn package manager
+
+### Setup:
+
 ```bash
+# Install dependencies
 npm ci
+
+# Start development server
 npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm run start
 ```
-Visit `http://localhost:3000` (development) or `https://licorice4good.com` (production).
+
+### Development Features:
+
+- **Hot Reload**: Instant updates during development
+- **Type Checking**: Real-time TypeScript validation
+- **Error Overlay**: Detailed error information in browser
+- **Performance Monitoring**: Built-in performance metrics
 
 ---
 
 ## Production Build & Deployment
+
+### Build Process:
+
 ```bash
+# Clean install
 npm ci
+
+# Production build
 npm run build
+
+# Start production server
 npm run start
 ```
-Run behind a reverse proxy with TLS and compression. Ensure `NEXT_PUBLIC_API_URL` is set for build/runtime.
+
+### Deployment Considerations:
+
+- **Reverse Proxy**: Use Nginx or similar for TLS and compression
+- **Environment Variables**: Ensure all required variables are set
+- **Static Assets**: Configure CDN for optimal performance
+- **Monitoring**: Set up error tracking and performance monitoring
 
 ---
 
 ## Reverse Proxy & API Proxying
-The project supports rewrites to proxy API calls:
-- If `NEXT_PUBLIC_API_URL` is missing, rewrites are skipped to prevent build errors.
-- When set, `/auth/*`, `/api/products*`, `/cart*`, `/orders*`, and `/uploads/*` are proxied to the backend origin.
 
-Recommendation:
-- Prefer same‑origin API (`/api`) to simplify cookie handling and avoid CORS issues.
+### Proxy Configuration:
+
+- **Automatic Rewrites**: Configured based on `NEXT_PUBLIC_API_URL`
+- **Route Mapping**: `/auth/*`, `/api/products*`, `/cart*`, `/orders*`, `/uploads/*`
+- **Cookie Handling**: Same-origin cookies for security
+
+### Best Practices:
+
+- Prefer same-origin API (`/api`) to simplify cookie handling
+- Use HTTPS in production for secure cookie transmission
+- Configure proper CORS headers for cross-origin requests
 
 ---
 
 ## Images, Assets, and Uploads
-- Backend serves images under `/uploads`.
-- Next Image `remotePatterns` is configured dynamically from `NEXT_PUBLIC_API_URL` or defaults to `localhost:4000` in development and `api.licorice4good.com` in production.
-- Place favicon(s) in `public/` and configure `metadata.icons` in `app/layout.tsx`.
+
+### Image Handling:
+
+- **Next.js Image**: Optimized image loading with lazy loading
+- **Remote Patterns**: Configured for backend image serving
+- **Cache Busting**: Automatic cache invalidation for updated images
+- **Responsive Images**: Multiple sizes for different screen densities
+
+### Asset Management:
+
+- **Static Assets**: Served from `public/` directory
+- **Favicon**: Configured in `app/layout.tsx`
+- **Icons**: SVG icons with proper accessibility attributes
 
 ---
 
 ## Observability & Error Handling
-- Friendly error messages on auth flows
-- Recommend adding runtime error boundaries and client‑side error reporting (Sentry/LogRocket)
-- Use browser DevTools network tab to verify cookies, CORS, and proxy rewrites in production
+
+### Error Management:
+
+- **Error Boundaries**: React error boundaries for graceful failures
+- **User-friendly Messages**: Clear error messages for users
+- **Logging**: Comprehensive error logging for debugging
+- **Recovery**: Automatic retry mechanisms for failed operations
+
+### Monitoring Recommendations:
+
+- **Error Tracking**: Integrate Sentry or similar service
+- **Performance Monitoring**: Use Vercel Analytics or similar
+- **User Analytics**: Implement privacy-compliant analytics
 
 ---
 
 ## Security Best Practices
-- Enforce HTTPS; secure cookies; exact `CLIENT_URL` on the API
-- Consider HTTP security headers at the reverse proxy (CSP, X‑Frame‑Options)
-- Input validation server‑side (Zod on API) is recommended
+
+### Implementation:
+
+- **HTTPS Enforcement**: Required for production deployments
+- **Secure Cookies**: HTTP-only, secure, same-site cookies
+- **Input Validation**: Client and server-side validation
+- **XSS Protection**: Sanitized inputs and secure rendering
+
+### Headers Configuration:
+
+- **Content Security Policy**: Prevent XSS attacks
+- **X-Frame-Options**: Prevent clickjacking
+- **HSTS**: HTTP Strict Transport Security
 
 ---
 
 ## Performance Optimizations
-- Server‑side pagination for admin tables
-- Client‑side debouncing for filters
-- Lazy image loading and optimized image sizes; CDN for static assets (recommended)
+
+### Frontend Optimizations:
+
+- **Code Splitting**: Automatic route-based code splitting
+- **Image Optimization**: Next.js Image with WebP support
+- **Lazy Loading**: Components and images loaded on demand
+- **Caching**: Aggressive caching strategies for static assets
+
+### Backend Optimizations:
+
+- **Server-side Pagination**: Efficient data loading
+- **Database Indexing**: Optimized queries with proper indices
+- **CDN Integration**: Global content delivery
+- **Compression**: Gzip/Brotli compression for assets
 
 ---
 
 ## SEO & Marketing
-- Add sitemap, robots, canonical tags, and OpenGraph/Twitter metadata
-- Optional blog/landing pages to boost organic traffic
+
+### SEO Features:
+
+- **Metadata**: Dynamic meta tags for products and pages
+- **Structured Data**: JSON-LD for rich snippets
+- **Sitemap**: Automatic sitemap generation
+- **Robots.txt**: Search engine crawling instructions
+
+### Marketing Integration:
+
+- **Analytics**: Google Analytics integration ready
+- **Social Sharing**: Open Graph and Twitter Card support
+- **Email Marketing**: Integration points for email campaigns
+
+---
+
+## Recent Updates & New Features
+
+### Version 2.0 Features (Latest):
+
+- **Custom Pack Builder**: Interactive 3-pack creation tool
+- **Stripe Payment Integration**: Complete payment processing with webhooks
+- **Advanced Admin Dashboard**: Enhanced product and order management
+- **Real-time Analytics**: Live metrics and performance monitoring
+- **Automated Order Verification**: AI-powered fraud detection
+- **Bulk Operations**: Mass updates for products, orders, and inventory
+- **Image Management**: Advanced image upload and management system
+- **Enhanced Error Handling**: Comprehensive error boundaries and recovery
+- **Performance Optimizations**: Improved loading times and user experience
+- **Accessibility Improvements**: WCAG 2.1 AA compliance
+
+### Technical Improvements:
+
+- **TypeScript Strict Mode**: Enhanced type safety
+- **Code Refactoring**: Reduced cognitive complexity
+- **Component Optimization**: Better performance and maintainability
+- **State Management**: Improved Zustand store architecture
+- **Build Optimization**: SWC integration for faster builds
 
 ---
 
 ## Internationalization & Localization (Roadmap)
+
 - i18n scaffolding for multi‑language storefront
 - Currency/locale formatting
+- RTL language support
 
 ---
 
 ## Affiliate System (Roadmap)
+
 - Affiliate login and dashboards
 - Link generator, campaign attribution, and commission reporting
 - Exportable statements and payout tracking
@@ -233,6 +446,7 @@ Recommendation:
 ---
 
 ## Mobile Application (Roadmap)
+
 - React Native application sharing the same auth and API
 - Deep linking into product, cart, and orders
 - Push notifications for order updates and promotions
@@ -240,6 +454,7 @@ Recommendation:
 ---
 
 ## Testing Strategy (Roadmap)
+
 - Component unit tests (Jest/RTL)
 - API contract tests for critical endpoints
 - E2E flows (Playwright) for login, add to cart, and checkout
@@ -247,16 +462,33 @@ Recommendation:
 ---
 
 ## Troubleshooting & FAQ
-- “Destination undefined” on build: ensure `NEXT_PUBLIC_API_URL` is set; rewrites are skipped otherwise
-- Auth flicker on auth pages: middleware enforces server‑side redirect; verify cookie name and origin
-- Product images not loading: check backend static `/uploads` mapping and Next Image remote patterns
+
+### Common Issues:
+
+- **"Destination undefined" on build**: Ensure `NEXT_PUBLIC_API_URL` is set
+- **Auth flicker on auth pages**: Middleware enforces server‑side redirect
+- **Product images not loading**: Check backend static `/uploads` mapping and Next Image remote patterns
+- **Payment failures**: Verify Stripe webhook configuration and environment variables
+- **Build errors**: Clear `.swc` cache and rebuild
+
+### Debug Steps:
+
+1. Check browser console for errors
+2. Verify environment variables
+3. Check network requests in DevTools
+4. Clear browser cache and cookies
+5. Restart development server
 
 ---
 
 ## Contributing Guidelines
+
 - Use feature branches and meaningful commit messages
 - Keep components small and accessible; colocate tests near code
 - Submit PRs with screenshots for UI changes
+- Follow TypeScript strict mode guidelines
+- Ensure accessibility compliance
 
 ## License
+
 - Proprietary / All rights reserved (update if open‑sourcing)

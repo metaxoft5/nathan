@@ -14,9 +14,9 @@ const WhoWeAre = () => {
         className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-black text-center mb-4 sm:mb-6 md:mb-8 lg:mb-10"
         splitBy="word"
       />
-      <div  className="layout flex flex-col xl:flex-row items-center justify-between w-full gap-6 sm:gap-8 lg:gap-12 xl:gap-4">
-       <div className="h-full w-full flex flex-col justify-center items-center gap-6 sm:gap-8 md:gap-10 lg:gap-12 xl:gap-16">
-          <WhoWeCard
+      <div className="layout flex flex-col xl:flex-row items-center justify-between w-full gap-6 sm:gap-8 lg:gap-12 xl:gap-4">
+        <div className="h-full w-full flex flex-col justify-center items-center gap-6 sm:gap-8 md:gap-10 lg:gap-12 xl:gap-16">
+          {/* <WhoWeCard
             title="Fundraising Made Easy"
             desc="We’ve simplified the fundraising process 
             so anyone can succeed. With no fees, no minimum 
@@ -24,7 +24,7 @@ const WhoWeAre = () => {
             our program is designed to remove the stress and maximize your results."
             bgColor="bg-[#F1A900]"
             shadowColor="bg-[#FEE2A1]"
-          />
+          /> */}
           <WhoWeCard
             title="Deliciously Unique Product"
             desc="Our Southern Sweet & Sour 

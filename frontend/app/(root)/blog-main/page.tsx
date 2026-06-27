@@ -112,7 +112,7 @@ const BlogMainPage = () => {
               Join thousands of organizations who have successfully raised funds with our candy fundraising solutions.
             </p>
             <Link
-              href="/shop"
+              href="/fundraising"
               className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-yellow-500 text-white font-semibold px-8 py-3 rounded-xl hover:from-orange-600 hover:to-yellow-600 transition-all duration-200 shadow-lg hover:shadow-xl"
             >
               <span>Start Fundraising</span>

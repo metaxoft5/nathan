@@ -1,25 +1,29 @@
-import axios from 'axios';
-import { toast } from 'react-toastify';
+import axios from "axios";
+import { toast } from "react-toastify";
 
 export interface BackendError {
   error?: string;
   message?: string;
   errors?: string[] | Record<string, string[]>;
   details?: string;
+  code?: string;
 }
 
-export const handleBackendError = (err: unknown, fallbackMessage: string = "An error occurred"): string => {
+export const handleBackendError = (
+  err: unknown,
+  fallbackMessage: string = "An error occurred"
+): string => {
   console.log("Error:", err);
-  
+
   if (axios.isAxiosError(err)) {
     const status = err.response?.status;
     const responseData = err.response?.data as BackendError | undefined;
-    
+
     // Handle different types of backend errors
     if (responseData) {
       // Check for multiple error formats
       let errorMessage = "";
-      
+
       if (responseData.error) {
         errorMessage = responseData.error;
       } else if (responseData.message) {
@@ -28,17 +32,17 @@ export const handleBackendError = (err: unknown, fallbackMessage: string = "An e
         // Handle validation errors array
         if (Array.isArray(responseData.errors)) {
           errorMessage = responseData.errors.join(", ");
-        } else if (typeof responseData.errors === 'object') {
+        } else if (typeof responseData.errors === "object") {
           errorMessage = Object.values(responseData.errors).flat().join(", ");
         } else {
           errorMessage = String(responseData.errors);
         }
       } else if (responseData.details) {
         errorMessage = responseData.details;
-      } else if (typeof responseData === 'string') {
+      } else if (typeof responseData === "string") {
         errorMessage = responseData;
       }
-      
+
       // Show error in toast and return message
       if (errorMessage) {
         toast.error(errorMessage);
@@ -49,7 +53,8 @@ export const handleBackendError = (err: unknown, fallbackMessage: string = "An e
       }
     } else {
       // No response data
-      const fallbackMsg = "Network error. Please check your connection and try again.";
+      const fallbackMsg =
+        "Network error. Please check your connection and try again.";
       toast.error(fallbackMsg);
       return fallbackMsg;
     }
@@ -61,24 +66,29 @@ export const handleBackendError = (err: unknown, fallbackMessage: string = "An e
   }
 };
 
-const getFallbackMessage = (status: number | undefined, fallbackMessage: string): string => {
+const getFallbackMessage = (
+  status: number | undefined,
+  fallbackMessage: string
+): string => {
   if (!status) {
-    const fallbackMsg = "Network error. Please check your connection and try again.";
+    const fallbackMsg =
+      "Network error. Please check your connection and try again.";
     toast.error(fallbackMsg);
     return fallbackMsg;
   }
 
   let fallbackMsg = "";
-  
+
   switch (status) {
     case 400:
       fallbackMsg = "Invalid request. Please check your input.";
       break;
     case 401:
-      fallbackMsg = "Unauthorized. Please check your credentials.";
+      fallbackMsg = "Please log in to access this feature.";
       break;
     case 403:
-      fallbackMsg = "Access denied. You don't have permission to perform this action.";
+      fallbackMsg =
+        "Access denied. You don't have permission to perform this action.";
       break;
     case 404:
       fallbackMsg = "Resource not found. Please try again.";
@@ -104,7 +114,7 @@ const getFallbackMessage = (status: number | undefined, fallbackMessage: string)
     default:
       fallbackMsg = `${fallbackMessage} (${status})`;
   }
-  
+
   toast.error(fallbackMsg);
   return fallbackMsg;
 };

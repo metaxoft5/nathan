@@ -5,8 +5,10 @@ import axios from "axios";
 import Link from "next/link";
 import AuthCard from "@/components/ui/auth/AuthCard";
 import PasswordInput from "@/components/ui/auth/PasswordInput";
+import { setToken, setUser } from "@/utils/tokenUtils";
+import { clearUserCache } from "@/hooks/useUser";
 import { ToastContainer, toast } from "react-toastify";
-import { API_URL, setAuthToken } from "@/utils/api";
+import { identifyUser } from "@/hooks/useTrackdeskEvent";
 
 // Helper function for fallback error messages
 const getFallbackMessage = (status: number | undefined): string => {
@@ -50,6 +52,8 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  // No need to clear cookies anymore - using localStorage
+
   // GlobalVerificationCheck handles redirects for logged-in users
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,15 +74,11 @@ const LoginPage = () => {
 
     try {
       setLoading(true);
-      const response = await axios.post(
-        `${API_URL}/auth/login`,
-        { email: form.email, password: form.password },
-        { withCredentials: true }
-      );
-
-      if (response.data?.token) {
-        setAuthToken(response.data.token);
-      }
+      const API_URL = process.env.NEXT_PUBLIC_API_URL;
+      const response = await axios.post(`${API_URL}/auth/login`, {
+        email: form.email,
+        password: form.password,
+      });
 
       // Check if user needs verification - only redirect if explicitly required
       if (response.data?.requiresVerification) {
@@ -89,16 +89,51 @@ const LoginPage = () => {
         return;
       }
 
+      // Store token in localStorage
+      if (response.data?.token) {
+        setToken(response.data.token);
+      }
+
+      // Store user data in localStorage
+      const userData = response.data?.user;
+      if (userData) {
+        setUser(userData);
+
+        // Identify user in Trackdesk
+        identifyUser(userData.id, {
+          email: userData.email,
+          name:
+            userData.name ||
+            `${userData.firstName || ""} ${userData.lastName || ""}`.trim(),
+          role: userData.role,
+          isVerified: userData.isVerified,
+        });
+      }
+
       toast.success("Login successful!");
       setSuccess("Login successful!");
-      
-      // GlobalVerificationCheck will handle verification and redirects
-      setTimeout(() => {
-        // Force a page reload to trigger the global verification check
-        window.location.reload();
-      }, 600);
-    } catch (err: unknown) {
 
+      // Clear user cache to ensure fresh data is fetched after login
+      clearUserCache();
+
+      // Check for redirect parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirectTo = urlParams.get("redirect");
+
+      // Small delay to show success message, then force full page reload
+      // This ensures the token is properly stored in localStorage
+      setTimeout(() => {
+        if (redirectTo) {
+          // Redirect to the originally requested page
+          window.location.href = redirectTo;
+        } else if (userData?.role === "admin") {
+          // Redirect to dashboard with full page reload
+          window.location.href = "/dashboard/admin";
+        } else {
+          window.location.href = "/";
+        }
+      }, 500);
+    } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         const status = err.response?.status;
         const responseData = err.response?.data;
@@ -206,17 +241,7 @@ const LoginPage = () => {
       <AuthCard
         title="Welcome back"
         subtitle="Enter your credentials to access your account"
-        footer={
-          <div>
-            <span>Don&apos;t have an account? </span>
-            <Link
-              href="/auth/register"
-              className="text-primary hover:underline"
-            >
-              Register
-            </Link>
-          </div>
-        }
+        footer={null}
       >
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {error && (

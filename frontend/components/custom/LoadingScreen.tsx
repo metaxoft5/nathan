@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 interface LoadingScreenProps {
   onComplete: () => void;
@@ -37,10 +38,17 @@ const LoadingScreen = ({ onComplete }: LoadingScreenProps) => {
     <div className={`fixed inset-0 bg-primary flex flex-col items-center justify-center z-50 transition-all duration-1000 ease-in-out ${
       isScaling ? 'scale-150 opacity-0 rotate-12' : 'scale-100 opacity-100'
     }`}>
-      <div className={`text-white text-8xl md:text-9xl lg:text-[12rem] font-bold transition-all duration-700 ${
+      <div className={`transition-all duration-700 ${
         isRotating ? 'animate-bounce rotate-12 scale-110' : 'animate-pulse'
       }`}>
-        Nathan
+        <Image
+          src="/assets/svg/logo.svg"
+          alt="Southern Sweet & Sour Logo"
+          width={400}
+          height={120}
+          className="w-auto h-24 md:h-32 lg:h-40"
+          priority
+        />
       </div>
       
       {/* Progress Text with cool animation */}

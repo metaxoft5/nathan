@@ -109,4 +109,3 @@ ecosystem.config.js
 # Backup files
 *.bak
 *.backup
-.vercel

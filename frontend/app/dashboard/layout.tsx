@@ -9,7 +9,7 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-white">
       <DashboardHeader />
-      <main className="px-4 sm:px-6 lg:px-8 py-6 sm:py-8">{children}</main>
+      <main className="w-full h-full layout py-10">{children}</main>
     </div>
   );
 }

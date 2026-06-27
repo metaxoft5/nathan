@@ -3,14 +3,13 @@ import { navLinks } from "@/constant/index";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useState, useRef, useEffect } from "react";
-import CustomButton from "@/components/custom/CustomButton";
 import { ShoppingCart, Menu, X, Heart } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/hooks/useUser";
 import { useCartStore } from "@/store/cartStore";
 import axios from "axios";
-import { API_URL, authHeaders, clearAuthToken } from "@/utils/api";
 import { useWishlistStore } from "@/store/wishlistStore";
+import { getToken, removeToken, removeUser } from "@/utils/tokenUtils";
 
 // Define types for navLinks and subLinks
 type SubLink = {
@@ -25,6 +24,7 @@ type NavLink = {
 };
 
 const Header = () => {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL;
   const { user, loading, error, clearUser } = useUser();
   const { getItemCount } = useCartStore();
   const { getItemCount: getWishlistItemCount } = useWishlistStore();
@@ -33,35 +33,28 @@ const Header = () => {
   );
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [logoutLoading, setLogoutLoading] = useState(false);
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const router = useRouter();
 
-  const handleClick = () => {
-    if (user) {
-      handleLogout();
-    } else {
-      router.push("/auth/login");
-    }
-  };
-
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleLogout = async () => {
-    setLogoutLoading(true);
     try {
+      const token = getToken();
       await axios.post(`${API_URL}/auth/logout`, {}, {
-        withCredentials: true,
-        headers: authHeaders(),
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      clearAuthToken();
+      removeToken(); // Clear token from localStorage
+      removeUser(); // Clear user from localStorage
       clearUser(); // Clear user state immediately
       window.location.reload();
     } catch (err) {
       console.error("Logout failed:", err);
       // Even if logout fails, clear local state
+      removeToken();
+      removeUser();
       clearUser();
       window.location.reload();
-    } finally {
-      setLogoutLoading(false);
     }
   };
 
@@ -190,7 +183,7 @@ const Header = () => {
               )}
             {user?.role === "admin" && (
               <Link
-                href="/dashboard"
+                href="/dashboard/admin"
                 className="text-base xl:text-lg font-poppins px-2 py-1 rounded transition"
               >
                 Dashboard
@@ -229,22 +222,7 @@ const Header = () => {
                 </span>
               )}
             </Link>
-            {user && (
-              <Link
-                href="/profile"
-                className="hidden lg:block text-white hover:opacity-80 transition-opacity"
-              >
-                Profile
-              </Link>
-            )}
-            <div className="hidden lg:block">
-              <CustomButton
-                title={user ? "Logout" : "Login"}
-                onClick={handleClick}
-                loading={logoutLoading}
-                loadingText={user ? "Logging out..." : "Loading..."}
-              />
-            </div>
+            {/* Removed login/profile buttons - only needed for dashboard access */}
             {/* Mobile Nav Toggle */}
             <button
               className="lg:hidden ml-2 p-2 rounded focus:outline-none focus:ring-2 focus:ring-gray-300"
@@ -359,49 +337,8 @@ const Header = () => {
                   </Link>
                 )
               )}
-            {user && (
-              <Link
-                href="/profile"
-                className="text-base font-poppins w-full text-left px-2 py-2 border-b border-gray-200"
-                onClick={() => setMobileNavOpen(false)}
-              >
-                Profile
-              </Link>
-            )}
-            {user?.role === "admin" && (
-              <Link
-                href="/dashboard"
-                className="text-base font-poppins w-full text-left px-2 py-2 border-b border-gray-200"
-                onClick={() => setMobileNavOpen(false)}
-              >
-                Dashboard
-              </Link>
-            )}
+            {/* Removed profile and login/logout from mobile nav - only needed for dashboard */}
           </nav>
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100">
-            <Link
-              href={"/cart"}
-              onClick={() => setMobileNavOpen(false)}
-              className="relative cursor-pointer"
-            >
-              <ShoppingCart className="w-6 h-6" />
-              {getItemCount() > 0 && (
-                <span className="absolute -top-1 -right-1 bg-[#FF5D39] text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
-                  {getItemCount() > 99 ? "99+" : getItemCount()}
-                </span>
-              )}
-            </Link>
-            <CustomButton
-              title={user ? "Logout" : "Login"}
-              onClick={() => {
-                setMobileNavOpen(false);
-                handleClick();
-              }}
-              className="ml-2"
-              loading={logoutLoading}
-              loadingText={user ? "Logging out..." : "Loading..."}
-            />
-          </div>
         </div>
       </div>
     </header>

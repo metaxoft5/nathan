@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import AnimatedText from "@/components/custom/AnimatedText";
 import AnimatedSection from "@/components/custom/AnimatedSection";
 import CustomButton from "@/components/custom/CustomButton";
-import { apiPath } from "@/utils/api";
 
 // Product data structure matching the backend API
 type Product = {
@@ -49,7 +48,7 @@ const ShopOur = () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
-        const response = await fetch(apiPath("/products"), {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, {
           method: 'GET',
           credentials: 'include',
           headers: {
@@ -66,29 +65,22 @@ const ShopOur = () => {
         
         const data = await response.json();
         
-        // Ensure data is an array
-        if (Array.isArray(data)) {
-          const options = data.map((product: Product) => ({
-            id: product.id,
-            title: product.name,
-            kind: product.category as "Traditional" | "Sour" | "Sweet",
-            active: product.isActive || true
-          }));
-          setProductOptions(options);
-        } else if (data && Array.isArray(data.products)) {
+        // Handle the correct API response format: {products: [], pagination: {}}
+        if (data && Array.isArray(data.products)) {
           const options = data.products.map((product: Product) => ({
             id: product.id,
             title: product.name,
             kind: product.category as "Traditional" | "Sour" | "Sweet",
-            active: product.isActive || true
+            active: product.isActive !== false // Default to true if not specified
           }));
           setProductOptions(options);
-        } else if (data && Array.isArray(data.data)) {
-          const options = data.data.map((product: Product) => ({
+        } else if (Array.isArray(data)) {
+          // Fallback: if response is directly an array
+          const options = data.map((product: Product) => ({
             id: product.id,
             title: product.name,
             kind: product.category as "Traditional" | "Sour" | "Sweet",
-            active: product.isActive || true
+            active: product.isActive !== false
           }));
           setProductOptions(options);
         } else {
@@ -106,7 +98,7 @@ const ShopOur = () => {
         } else {
           setError('Failed to load products. Please try again later.');
         }
-        // Don't use fallback data - keep empty array to show error state
+        // Keep empty array to show error state
         setProductOptions([]);
       } finally {
         setLoading(false);
@@ -119,17 +111,19 @@ const ShopOur = () => {
   const handlePrevious = () => {
     // Show 4 at a time; allow scrolling only if more than 4
     if (productOptions.length <= 4) return;
-    setCurrentIndex((prevIndex) =>
-      prevIndex === 0 ? productOptions.length - 4 : prevIndex - 1
-    );
+    setCurrentIndex((prevIndex) => {
+      const maxIndex = Math.max(0, productOptions.length - 4);
+      return prevIndex <= 0 ? maxIndex : prevIndex - 1;
+    });
   };
 
   const handleNext = () => {
     // Show 4 at a time; allow scrolling only if more than 4
     if (productOptions.length <= 4) return;
-    setCurrentIndex((prevIndex) =>
-      prevIndex >= productOptions.length - 4 ? 0 : prevIndex + 1
-    );
+    setCurrentIndex((prevIndex) => {
+      const maxIndex = Math.max(0, productOptions.length - 4);
+      return prevIndex >= maxIndex ? 0 : prevIndex + 1;
+    });
   };
 
   const handleCheckboxChange = (index: number) => {
@@ -141,7 +135,7 @@ const ShopOur = () => {
   };
 
   const handleBuyNow = () => {
-    if (selectedOption !== null) {
+    if (selectedOption !== null && productOptions[selectedOption]) {
       setBuyNowLoading(true);
       const selectedProduct = productOptions[selectedOption];
       // Navigate to the specific product page
@@ -214,112 +208,126 @@ const ShopOur = () => {
                 </div>
               )}
               {productOptions.length > 0 && (
-                <div
-                  className="transition-transform duration-300 ease-in-out h-[160px]"
-                  style={{ transform: `translateY(-${currentIndex * 40}px)` }}
-                >
-                  {productOptions.map((option, index) => {
-                    const isSelected = selectedOption === index;
-                    const isDisabled = selectedOption !== null && selectedOption !== index;
+                <div className="relative h-[200px] sm:h-[180px] md:h-[160px] overflow-hidden">
+                  <div
+                    className="transition-transform duration-300 ease-in-out"
+                    style={{ transform: `translateY(-${currentIndex * 50}px)` }}
+                  >
+                    {productOptions.map((option, index) => {
+                      const isSelected = selectedOption === index;
+                      const isDisabled = selectedOption !== null && selectedOption !== index;
 
-                    return (
-                    <div
-                      key={option.id}
-                      className={`flex items-center gap-3 cursor-pointer hover:bg-gray-50 px-2 rounded transition-colors h-10
-                        ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}
-                      `}
-                      onClick={() => {
-                        if (!isDisabled) handleCheckboxChange(index);
-                      }}
-                    >
-                      <div
-                        className={`w-5 h-5 border-2 rounded flex items-center justify-center ${
-                          isSelected
-                            ? "border-green-500 bg-green-500"
-                            : "border-gray-300"
-                        } ${isDisabled ? "bg-gray-200" : ""}`}
-                      >
-                        {isSelected && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
+                      return (
+                        <div
+                          key={option.id}
+                          className={`flex items-center gap-3 sm:gap-4 cursor-pointer hover:bg-gray-50 px-3 sm:px-4 py-2 rounded-lg transition-all duration-200 h-[50px] mb-1
+                            ${isDisabled ? "opacity-50 cursor-not-allowed" : ""}
+                            ${isSelected ? "bg-green-50 border-l-4 border-green-500" : "border-l-4 border-transparent"}
+                          `}
+                          onClick={() => {
+                            if (!isDisabled) handleCheckboxChange(index);
+                          }}
+                        >
+                          <div
+                            className={`w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6 border-2 rounded-md flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+                              isSelected
+                                ? "border-green-500 bg-green-500 shadow-md"
+                                : "border-gray-400"
+                            } ${isDisabled ? "bg-gray-200" : ""}`}
                           >
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                      </div>
-                      <span
-                        className={`text-sm ${
-                          isSelected
-                            ? "font-semibold text-black"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {option.title}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+                            {isSelected && (
+                              <svg
+                                className="w-4 h-4 sm:w-5 sm:h-5 md:w-4 md:h-4 text-white"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            )}
+                          </div>
+                          <span
+                            className={`text-sm sm:text-base md:text-sm flex-1 ${
+                              isSelected
+                                ? "font-semibold text-black"
+                                : "text-gray-700"
+                            }`}
+                          >
+                            {option.title}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* Vertical Navigation Buttons */}
-            <div className="flex flex-row md:flex-col gap-2 justify-center md:justify-start">
-              <button
-                onClick={handlePrevious}
-                className="w-10 h-10 md:w-12 md:h-12 bg-secondary rounded-full flex items-center justify-center text-white transition-colors"
-              >
-                <svg
-                  className="w-6 h-6 md:w-8 md:h-8"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+            {/* Vertical Navigation Buttons - Only show if more than 4 products */}
+            {productOptions.length > 4 && (
+              <div className="flex flex-row md:flex-col gap-2 sm:gap-3 justify-center md:justify-start">
+                <button
+                  onClick={handlePrevious}
+                  className="w-12 h-12 sm:w-14 sm:h-14 md:w-12 md:h-12 bg-secondary rounded-full flex items-center justify-center text-white transition-all duration-200 hover:bg-secondary/80 hover:scale-105 active:scale-95 shadow-lg"
+                  title="Previous products"
+                  aria-label="Previous products"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 15l7-7 7 7"
-                  />
-                </svg>
-              </button>
-              <button
-                onClick={handleNext}
-                className="w-10 h-10 md:w-12 md:h-12 bg-secondary rounded-full flex items-center justify-center text-white transition-colors"
-              >
-                <svg
-                  className="w-6 h-6 md:w-8 md:h-8"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+                  <svg
+                    className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M5 15l7-7 7 7"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleNext}
+                  className="w-12 h-12 sm:w-14 sm:h-14 md:w-12 md:h-12 bg-secondary rounded-full flex items-center justify-center text-white transition-all duration-200 hover:bg-secondary/80 hover:scale-105 active:scale-95 shadow-lg"
+                  title="Next products"
+                  aria-label="Next products"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-            </div>
+                  <svg
+                    className="w-6 h-6 sm:w-7 sm:h-7 md:w-6 md:h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+              </div>
+            )}
           </div>
           {/* Buy Now Button */}
           <div className="mt-8 flex justify-center">
             <CustomButton
-              title="Buy Now"
-              className="bg-primary text-white px-8 py-3 text-lg font-semibold"
+              title={selectedOption !== null ? `Buy ${productOptions[selectedOption]?.title}` : "Select a product to continue"}
+              className={`px-8 py-3 text-lg font-semibold ${
+                selectedOption !== null 
+                  ? "bg-primary text-white hover:bg-primary/90" 
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
               disabled={selectedOption === null || buyNowLoading}
               loading={buyNowLoading}
               loadingText="Redirecting..."
               onClick={handleBuyNow}
             />
           </div>
+          
         </div>
       </AnimatedSection>
     </section>

@@ -1,13 +1,14 @@
 "use client";
+
 import React, { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cartStore";
 import { useOrdersStore } from "@/store/ordersStore";
-import { useUser } from "@/hooks/useUser";
-import VerificationGuard from "@/components/auth/VerificationGuard";
+// Removed auth imports - cart is now public for guest checkout
 import CustomButton from "@/components/custom/CustomButton";
-import { apiPath } from "@/utils/api";
+// Removed ShippingAddressForm import - using Stripe checkout address collection
+import axios from "axios";
 
 // Type definitions
 interface Product {
@@ -15,13 +16,19 @@ interface Product {
   name: string;
   price: number;
   category?: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
+  image?: string; // Alternative image field
+  images?: string[]; // Array of images
   sku?: string;
   isActive?: boolean;
+  description?: string;
+  brand?: string;
+  // Handle different possible API response structures
+  title?: string; // Some APIs use 'title' instead of 'name'
+  cost?: number; // Some APIs use 'cost' instead of 'price'
 }
 
 const CartPage = () => {
-  const { user, loading: userLoading } = useUser();
   const {
     items,
     loading,
@@ -31,44 +38,144 @@ const CartPage = () => {
     clearCart,
     getTotal,
     loadFromBackend,
-    addItem,
   } = useCartStore();
 
-  const { createOrder } = useOrdersStore();
+  const {} = useOrdersStore();
   const router = useRouter();
   const [orderLoading, setOrderLoading] = useState<boolean>(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [clearCartLoading, setClearCartLoading] = useState<boolean>(false);
   const [notes, setNotes] = useState("");
-  const [shipping] = useState({
+  const [, setRecommendedProducts] = useState<Product[]>([]);
+  const [, setRecommendedLoading] = useState<boolean>(false);
+  const [flavors, setFlavors] = useState<Array<{ id: string; name: string }>>(
+    []
+  );
+  const [variationDetails, setVariationDetails] = useState<
+    Record<
+      string,
+      {
+        id: string;
+        name: string;
+        flavors: Array<{ id: string; name: string }>;
+      }
+    >
+  >({});
+
+  // Shipping address and rates state
+  const [shippingAddress, setShippingAddress] = useState({
     name: "",
     email: "",
     phone: "",
-    address1: "",
-    address2: "",
+    street: "",
     city: "",
     state: "",
-    postal: "",
+    zipCode: "",
     country: "US",
   });
-  const [recommendedProducts, setRecommendedProducts] = useState<Product[]>([]);
-  const [recommendedLoading, setRecommendedLoading] = useState<boolean>(false);
+  const [shippingRates, setShippingRates] = useState<
+    Array<{
+      objectId: string;
+      serviceName: string;
+      carrier: string;
+      amount: number;
+      estimatedDays: number;
+    }>
+  >([]);
+  const [selectedShippingRate, setSelectedShippingRate] = useState<{
+    objectId: string;
+    serviceName: string;
+    carrier: string;
+    amount: number;
+    estimatedDays: number;
+  } | null>(null);
+  const [calculatingShipping, setCalculatingShipping] = useState(false);
+  const [shippingError, setShippingError] = useState<string | null>(null);
+  const [showShippingForm, setShowShippingForm] = useState(false);
 
   const fetchRecommendedProducts = useCallback(async () => {
     setRecommendedLoading(true);
     try {
-      const response = await fetch(apiPath("/products"), {
-        credentials: "include",
-      });
+      // Try multiple API endpoints to find products
+      let response;
+      let products: Product[] = [];
 
-      if (response.ok) {
-        const data = await response.json();
-        const products = Array.isArray(data) ? data : data.products || [];
+      // First try the main products API
+      try {
+        response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          products = Array.isArray(data)
+            ? data
+            : data.products || data.data || [];
+        }
+      } catch (error) {
+        console.log("Failed to fetch from products API:", error);
+      }
+
+      // If no products from main API, try backend directly
+      if (products.length === 0) {
+        try {
+          const API_URL = process.env.NEXT_PUBLIC_API_URL;
+          response = await fetch(`${API_URL}/products`, {
+            credentials: "include",
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            products = Array.isArray(data)
+              ? data
+              : data.products || data.data || [];
+          }
+        } catch (error) {
+          console.log("Failed to fetch from backend products:", error);
+        }
+      }
+
+      // If still no products, try admin products endpoint
+      if (products.length === 0) {
+        try {
+          const API_URL = process.env.NEXT_PUBLIC_API_URL;
+          response = await fetch(`${API_URL}/admin/products`, {
+            credentials: "include",
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            products = Array.isArray(data)
+              ? data
+              : data.products || data.data || [];
+          }
+        } catch (error) {
+          console.log("Failed to fetch from admin products:", error);
+        }
+      }
+      //
+      if (products.length > 0) {
+        // Normalize product data to handle different API response formats
+        const normalizedProducts = products.map((product: Product) => ({
+          id: product.id,
+          name: product.name || product.title || "Unknown Product",
+          price: product.price || product.cost || 0,
+          category: product.category || product.brand || "General",
+          imageUrl:
+            product.imageUrl ||
+            product.image ||
+            (product.images && product.images[0]) ||
+            null,
+          sku: product.sku,
+          isActive: product.isActive !== false,
+          description: product.description,
+          brand: product.brand,
+        }));
 
         // Filter out products already in cart
         const cartProductIds = items.map((item) => item.productId);
-        const availableProducts = products.filter(
-          (product: Product) =>
+        const availableProducts = normalizedProducts.filter(
+          (product) =>
             product.id &&
             !cartProductIds.includes(product.id) &&
             product.isActive !== false
@@ -79,9 +186,9 @@ const CartPage = () => {
         let productsToShow = availableProducts;
 
         // If no products available (all in cart), show all products for browsing
-        if (availableProducts.length === 0 && products.length > 0) {
-          productsToShow = products.filter(
-            (product: Product) => product.id && product.isActive !== false
+        if (availableProducts.length === 0 && normalizedProducts.length > 0) {
+          productsToShow = normalizedProducts.filter(
+            (product) => product.id && product.isActive !== false
           );
         }
 
@@ -90,45 +197,124 @@ const CartPage = () => {
         const selected = shuffled.slice(0, 2);
 
         setRecommendedProducts(selected);
+      } else {
+        setRecommendedProducts([]);
       }
     } catch (error) {
       console.error("Failed to fetch recommended products:", error);
+      setRecommendedProducts([]);
     } finally {
       setRecommendedLoading(false);
     }
   }, [items]);
 
-  // Authentication check
-  useEffect(() => {
-    if (!userLoading && !user) {
-      router.push("/auth/login");
-      return;
+  // Removed authentication check - cart is public for guest checkout
+
+  // Fetch flavors for custom pack display
+  const fetchFlavors = useCallback(async () => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+      // Try public endpoints to find flavors (no authentication needed)
+      let response;
+      try {
+        // Try 3pack flavors endpoint first (public)
+        response = await axios.get(`${API_URL}/3pack/flavors`, {
+          withCredentials: true,
+        });
+      } catch {
+        // Fallback to products flavors endpoint (public)
+        response = await axios.get(`${API_URL}/products/flavors`, {
+          withCredentials: true,
+        });
+      }
+
+      const flavorsData = Array.isArray(response.data)
+        ? response.data
+        : response.data?.flavors || [];
+      setFlavors(
+        flavorsData.map((flavor: { id: string; name: string }) => ({
+          id: flavor.id,
+          name: flavor.name,
+        }))
+      );
+    } catch (error) {
+      console.error("Failed to fetch flavors:", error);
     }
-  }, [user, userLoading, router]);
+  }, []);
+
+  // Fetch variation details including flavors via product endpoint
+  const fetchVariationDetails = useCallback(
+    async (productId: string, variationId: string) => {
+      if (!variationId || !productId) {
+        return; // Invalid IDs
+      }
+
+      // Check if already fetched
+      if (variationDetails[variationId]) {
+        return;
+      }
+
+      try {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL;
+        // Fetch product which includes all variations with flavors
+        const response = await axios.get(`${API_URL}/products/${productId}`, {
+          withCredentials: true,
+        });
+
+        if (response.data && response.data.variations) {
+          // Find the specific variation
+          const variation = response.data.variations.find(
+            (v: { id: string }) => v.id === variationId
+          );
+
+          if (variation) {
+            setVariationDetails((prev) => ({
+              ...prev,
+              [variationId]: {
+                id: variation.id,
+                name: variation.name,
+                flavors: (variation.flavors || []).map(
+                  (vf: { id: string; name: string }) => ({
+                    id: vf.id,
+                    name: vf.name,
+                  })
+                ),
+              },
+            }));
+          }
+        }
+      } catch (error) {
+        console.error(
+          `Failed to fetch variation ${variationId} for product ${productId}:`,
+          error
+        );
+      }
+    },
+    [variationDetails]
+  );
 
   useEffect(() => {
-    if (user) {
-      loadFromBackend();
-      fetchRecommendedProducts();
-    }
-  }, [loadFromBackend, fetchRecommendedProducts, user]);
+    loadFromBackend();
+    fetchRecommendedProducts();
+    fetchFlavors();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Show loading while checking authentication
-  if (userLoading) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF5D39] mx-auto mb-4"></div>
-          <p className="text-black text-lg">Loading cart...</p>
-        </div>
-      </div>
-    );
-  }
+  // Fetch variation details for items with variations
+  useEffect(() => {
+    items.forEach((item) => {
+      if (
+        item.variationId &&
+        item.productId &&
+        !variationDetails[item.variationId]
+      ) {
+        fetchVariationDetails(item.productId, item.variationId);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, fetchVariationDetails]);
 
-  // Redirect if not authenticated
-  if (!user) {
-    return null;
-  }
+  // Removed authentication checks - cart is public for guest checkout
 
   const handleQuantity = async (itemId: string, quantity: number) => {
     await updateQuantity(itemId, quantity);
@@ -147,430 +333,934 @@ const CartPage = () => {
     }
   };
 
-  const handleAddRecommendedProduct = async (product: Product) => {
-    try {
-      await addItem({
-        productId: product.id,
-        productName: product.name,
-        quantity: 1,
-        price: product.price,
-        imageUrl: product.imageUrl,
-        sku: product.sku,
-      });
-      // Refresh recommended products to show new ones
-      fetchRecommendedProducts();
-    } catch (error) {
-      console.error("Failed to add recommended product:", error);
-    }
+  const getFlavorName = (flavorId: string) => {
+    const flavor = flavors.find((f) => f.id === flavorId);
+    return flavor ? flavor.name : flavorId;
   };
 
-  const handleViewAllProducts = () => {
-    router.push("/shop");
+  // Helper function to normalize image URLs
+  const normalizeImageSrc = (src?: string | null) => {
+    if (!src) return "/assets/images/slider.png";
+
+    // Handle static assets (served from frontend)
+    if (src.startsWith("/assets")) {
+      return src;
+    }
+
+    // Handle uploaded images (served from backend)
+    if (src.startsWith("/uploads") || src.startsWith("uploads")) {
+      const path = src.startsWith("/uploads") ? src : `/${src}`;
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        console.error("NEXT_PUBLIC_API_URL is not defined");
+        return path;
+      }
+      return `${apiUrl}${path}`;
+    }
+
+    // Handle full URLs (already complete)
+    if (src.startsWith("http://") || src.startsWith("https://")) {
+      return src;
+    }
+
+    // Default case - assume it needs API URL
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+      console.error("NEXT_PUBLIC_API_URL is not defined");
+      return src;
+    }
+
+    // Ensure src starts with / for proper path construction
+    const normalizedSrc = src.startsWith("/") ? src : `/${src}`;
+    return `${apiUrl}${normalizedSrc}`;
+  };
+
+  // Calculate shipping rates based on address
+  const calculateShippingRates = async () => {
+    setCalculatingShipping(true);
+    setShippingError(null);
+
+    try {
+      // Validate address fields
+      if (
+        !shippingAddress.name ||
+        !shippingAddress.email ||
+        !shippingAddress.street ||
+        !shippingAddress.city ||
+        !shippingAddress.state ||
+        !shippingAddress.zipCode
+      ) {
+        throw new Error("Please fill in all required address fields");
+      }
+
+      const orderItems = items.map((item) => ({
+        productId: item.isCustomPack ? null : item.productId,
+        quantity: item.quantity,
+        price: item.price,
+        flavorIds: item.flavorIds || [],
+        customPackName: item.customPackName || null,
+        variationId: item.variationId || null, // Include variation ID if present
+        packProductId: item.packProductId || null,
+        packProductName: item.packProductName || null,
+        packSize: item.packSize || null,
+      }));
+
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/shippo/calculate-rates`,
+        {
+          shippingAddress: {
+            name: shippingAddress.name,
+            email: shippingAddress.email,
+            phone: shippingAddress.phone || "",
+            street1: shippingAddress.street,
+            city: shippingAddress.city,
+            state: shippingAddress.state,
+            zip: shippingAddress.zipCode,
+            country: shippingAddress.country,
+          },
+          orderItems,
+        }
+      );
+
+      if (response.data.rates && response.data.rates.length > 0) {
+        setShippingRates(response.data.rates);
+        // Auto-select the cheapest rate
+        type ShippingRate = {
+          objectId: string;
+          serviceName: string;
+          carrier: string;
+          amount: number;
+          estimatedDays: number;
+        };
+        const cheapest = response.data.rates.reduce(
+          (min: ShippingRate, rate: ShippingRate) =>
+            rate.amount < min.amount ? rate : min
+        );
+        setSelectedShippingRate(cheapest);
+      } else {
+        throw new Error("No shipping rates available for this address");
+      }
+    } catch (error: unknown) {
+      const err = error as {
+        response?: { data?: { error?: string } };
+        message?: string;
+      };
+      console.error("Shipping calculation error:", err);
+      setShippingError(
+        err.response?.data?.error ||
+          err.message ||
+          "Failed to calculate shipping"
+      );
+    } finally {
+      setCalculatingShipping(false);
+    }
   };
 
   const checkout = async () => {
     setOrderError(null);
+
+    if (items.length === 0) {
+      setOrderError("Your cart is empty. Add some products to continue.");
+      return;
+    }
+
+    // Show shipping form if not already shown
+    if (!showShippingForm) {
+      setShowShippingForm(true);
+      return;
+    }
+
+    // Validate shipping is calculated
+    if (!selectedShippingRate) {
+      setOrderError(
+        "Please enter your shipping address and calculate shipping"
+      );
+      return;
+    }
+
+    // Proceed with checkout
+    await proceedWithCheckout();
+  };
+
+  const proceedWithCheckout = async () => {
     try {
       setOrderLoading(true);
 
-      if (items.length === 0) {
-        throw new Error("Your cart is empty. Add some products to continue.");
-      }
-
-      // Enhanced product verification with detailed logging
+      // Enhanced product verification with detailed logging (skip custom packs)
       try {
-        const productIds = items.map((item) => item.productId);
-        // Check if products exist by fetching them from backend
-        const response = await fetch(apiPath("/products"), {
-          credentials: "include",
-        });
+        const regularItems = items.filter((item) => !item.isCustomPack);
 
-        if (response.ok) {
-          const products = await response.json();
+        if (regularItems.length > 0) {
+          const regularProductIds = regularItems.map((item) => item.productId);
 
-          const availableProductIds = Array.isArray(products)
-            ? products.map((p: { id: string }) => p.id)
-            : products.products?.map((p: { id: string }) => p.id) || [];
-
-          const missingProducts = productIds.filter(
-            (id) => !availableProductIds.includes(id)
+          // Check if regular products exist by fetching them from backend
+          const response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/products`,
+            {
+              credentials: "include",
+            }
           );
-          if (missingProducts.length > 0) {
-            throw new Error(
-              `Some items in your cart are no longer available. Please refresh your cart to see current availability.`
+
+          if (response.ok) {
+            const products = await response.json();
+
+            const availableProductIds = Array.isArray(products)
+              ? products.map((p: { id: string }) => p.id)
+              : products.products?.map((p: { id: string }) => p.id) || [];
+
+            const missingProducts = regularProductIds.filter(
+              (id) => !availableProductIds.includes(id)
             );
+            if (missingProducts.length > 0) {
+              throw new Error(
+                `Some items in your cart are no longer available. Please refresh your cart to see current availability.`
+              );
+            }
           }
         }
       } catch {
         // Continue anyway - backend will handle validation
       }
 
-      // Try the format that matches the backend database
+      // Convert cart items to order items format expected by backend
+      const orderItems = items.map((item) => ({
+        productId: item.isCustomPack ? null : item.productId, // NULL for custom packs
+        productName: item.productName,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.price * item.quantity,
+        // Always include flavorIds for custom packs
+        flavorIds: item.flavorIds || [],
+        customPackName: item.customPackName || null,
+        variationId: item.variationId || null, // Include variation ID if present
+        variationName: item.variationName || null,
+        packProductId: item.packProductId || null,
+        packProductName: item.packProductName || null,
+        packSize: item.packSize || null,
+      }));
+
+      const subtotal = getTotal();
+      const shippingCost = selectedShippingRate?.amount || 0;
+      const total = subtotal + shippingCost;
+
       const orderData = {
-        orderItems: items.map((item) => ({
-          productId: item.productId,
-          productName: item.productName,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-        total: getTotal(),
-        // Add any additional fields the backend might expect
-        status: "pending" as const,
-        notes: notes || "",
+        orderItems,
+        orderNotes: notes || "Order from website",
+        total: total,
         shippingAddress: {
-          name: shipping.name,
-          email: shipping.email,
-          phone: shipping.phone,
-          address1: shipping.address1,
-          address2: shipping.address2,
-          city: shipping.city,
-          state: shipping.state,
-          postal: shipping.postal,
-          country: shipping.country,
+          name: shippingAddress.name,
+          email: shippingAddress.email,
+          phone: shippingAddress.phone,
+          street: shippingAddress.street,
+          city: shippingAddress.city,
+          state: shippingAddress.state,
+          zipCode: shippingAddress.zipCode,
+          country: shippingAddress.country,
         },
       };
 
-      // Fix: shippingAddress should be a string, not an object
-      const orderDataForBackend = {
-        ...orderData,
-        shippingAddress: [
-          orderData.shippingAddress.name,
-          orderData.shippingAddress.email,
-          orderData.shippingAddress.phone,
-          orderData.shippingAddress.address1,
-          orderData.shippingAddress.address2,
-          orderData.shippingAddress.city,
-          orderData.shippingAddress.state,
-          orderData.shippingAddress.postal,
-          orderData.shippingAddress.country,
-        ]
-          .filter(Boolean)
-          .join(", "),
-      };
+      // Create Stripe Checkout Session with shipping included
+      const resp = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/payments/create-checkout-session`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            // Pass order data in metadata with pre-collected address
+            orderData: {
+              orderNotes: orderData.orderNotes,
+              orderItems: orderData.orderItems,
+              total: orderData.total,
+              shippingAddress: orderData.shippingAddress,
+            },
+            items: [
+              ...items.map((item) => ({
+                productId: item.isCustomPack ? item.id : item.productId,
+                productName: item.productName,
+                quantity: item.quantity,
+                price: item.price,
+                ...(item.isCustomPack && {
+                  isCustomPack: true,
+                  flavorIds: item.flavorIds,
+                  sku: item.sku,
+                }),
+              })),
+              // Add shipping as a line item (selectedShippingRate is guaranteed to exist here)
+              ...(selectedShippingRate
+                ? [
+                    {
+                      productName: `Shipping - ${selectedShippingRate.carrier} ${selectedShippingRate.serviceName}`,
+                      quantity: 1,
+                      price: shippingCost,
+                    },
+                  ]
+                : []),
+            ],
+            customerEmail: shippingAddress.email,
+            shippingAddress: orderData.shippingAddress,
+            selectedShippingRate: selectedShippingRate
+              ? {
+                  carrier: selectedShippingRate.carrier,
+                  amount: selectedShippingRate.amount,
+                  serviceName: selectedShippingRate.serviceName,
+                  objectId: selectedShippingRate.objectId,
+                }
+              : undefined,
+            successUrl: `${window.location.origin}/orders/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${window.location.origin}/cart`,
+          }),
+        }
+      );
 
-      const created = await createOrder(orderDataForBackend);
-      if (!created) throw new Error("Failed to create order");
+      if (!resp.ok) {
+        // Try to get the actual error message from the response
+        try {
+          const errorData = await resp.json();
+          throw new Error(errorData.message || "Unable to start checkout");
+        } catch {
+          throw new Error("Unable to start checkout");
+        }
+      }
 
-      // Create Stripe Checkout Session
-      const resp = await fetch("/payments/create-checkout-session", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: created.id,
-          items: orderData.orderItems,
-          customerEmail: shipping.email || undefined,
-          shippingAddress: orderData.shippingAddress,
-          successUrl: `${window.location.origin}/profile?order=${created.id}&session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${window.location.origin}/cart`,
-        }),
-      });
-      if (!resp.ok) throw new Error("Unable to start checkout");
       const data = await resp.json();
       if (!data?.url) throw new Error("Invalid checkout session");
       window.location.href = data.url;
     } catch (e: unknown) {
-      const message =
-        (e as { message?: string })?.message || "Failed to place order";
+      let message = "Failed to place order";
+
+      // Handle different types of errors
+      if (e && typeof e === "object") {
+        if ("message" in e && typeof e.message === "string") {
+          message = e.message;
+        } else if (
+          "response" in e &&
+          e.response &&
+          typeof e.response === "object"
+        ) {
+          // Handle axios-style errors
+          const response = e.response as { data?: { message?: string } };
+          if (response.data?.message) {
+            message = response.data.message;
+          }
+        }
+      }
+
       setOrderError(message);
     } finally {
       setOrderLoading(false);
     }
   };
 
+  // Removed address handling functions - Stripe will collect address directly
+
   return (
-    <VerificationGuard>
-      <div className="min-h-screen bg-white">
-        <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
-          {/* Header */}
-          <div className="text-center mb-8 sm:mb-12">
-            <h1 className="text-2xl sm:text-4xl font-bold mb-2 bg-gradient-to-r from-[#FF5D39] to-[#F1A900] bg-clip-text text-transparent">
-              Your Shopping Cart
-            </h1>
-            <p className="text-base sm:text-lg text-black/70">
-              Review your items and complete your purchase
-            </p>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+        {/* Header */}
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2 bg-gradient-to-r from-[#FF5D39] to-[#F1A900] bg-clip-text text-transparent">
+            Shopping Cart
+          </h1>
+          <p className="text-sm sm:text-base text-gray-600">
+            Review your items and proceed to checkout
+          </p>
+        </div>
+
+        {/* Shipping address will be collected by Stripe checkout */}
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center">
+              <svg
+                className="w-5 h-5 text-red-500 mr-3"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p className="text-red-700">{error}</p>
+            </div>
           </div>
+        )}
 
-          {/* Error and Loading States */}
-          {error && (
-            <div className="mb-6 p-4 rounded-xl shadow-sm bg-primary/10 border border-primary/40">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <svg
-                    className="h-5 w-5 text-primary"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-primary">{error}</p>
-                </div>
-              </div>
+        {/* Loading State */}
+        {loading && (
+          <div className="flex justify-center items-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+            <span className="ml-3 text-lg text-gray-600">
+              Loading your cart...
+            </span>
+          </div>
+        )}
+
+        {/* Empty Cart */}
+        {!loading && items.length === 0 && (
+          <div className="text-center py-16">
+            <div className="mx-auto h-24 w-24 mb-4 text-gray-300">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1}
+                  d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-2.5 5M7 13l2.5 5m6-5v6a2 2 0 01-2 2H9a2 2 0 01-2-2v-6m6 0V9a2 2 0 00-2-2H9a2 2 0 00-2 2v4.01"
+                />
+              </svg>
             </div>
-          )}
+            <h3 className="text-xl font-semibold mb-2 text-gray-900">
+              Your cart is empty
+            </h3>
+            <p className="mb-6 text-gray-600">{`Looks like you haven't added any items to your cart yet.`}</p>
+            <CustomButton
+              title="Start Shopping"
+              onClick={() => router.push("/shop")}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+            />
+          </div>
+        )}
 
-          {loading && (
-            <div className="flex justify-center items-center py-16 sm:py-20">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-              <span className="ml-3 text-lg text-black/70">
-                Loading your cart...
-              </span>
-            </div>
-          )}
-
-          {!loading && items.length === 0 && (
-            <div className="text-center py-16 sm:py-20">
-              <div className="mx-auto h-20 w-20 sm:h-24 sm:w-24 mb-4 text-gray-300">
-                <svg
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  className="text-black"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1}
-                    d="M3 3h2l.4 2M7 13h10l4-8H5.4m0 0L7 13m0 0l-2.5 5M7 13l2.5 5m6-5v6a2 2 0 01-2 2H9a2 2 0 01-2-2v-6m6 0V9a2 2 0 00-2-2H9a2 2 0 00-2 2v4.01"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-lg sm:text-xl font-semibold mb-2 text-black">
-                Your cart is empty
-              </h3>
-              <p className="mb-6 text-sm sm:text-base text-black/70">
-                Looks like you haven&apos;t added any items to your cart yet.
-              </p>
-              <CustomButton
-                title="Start Shopping"
-                onClick={() => router.push("/shop")}
-                className="bg-primary text-white hover:opacity-90 transition-opacity hover:bg-primary/90"
-              />
-            </div>
-          )}
-
-          {/* Cart Items */}
-          {items.length > 0 && (
-            <div className="space-y-4 sm:space-y-6 mb-8">
-              {items.map((item) => {
-                const unit = item.price;
-                return (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl shadow-lg border border-gray-200 bg-white overflow-hidden hover:shadow-xl transition-all duration-300"
-                  >
-                    <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 p-4 sm:p-6">
-                      {/* Product Image */}
-                      <div className="flex-shrink-0">
-                        {item.imageUrl ? (
-                          <div className="relative">
-                            <Image
-                              src={item.imageUrl}
-                              alt={item.productName}
-                              width={120}
-                              height={120}
-                              className="w-30 h-30 object-cover rounded-xl shadow-md"
-                            />
-                            <div
-                              className="absolute inset-0 rounded-xl"
-                              style={{
-                                background:
-                                  "linear-gradient(to top, rgba(0,0,0,0.08), transparent)",
-                              }}
-                            ></div>
-                          </div>
-                        ) : (
-                          <div
-                            className="w-30 h-30 rounded-xl flex items-center justify-center"
-                            style={{
-                              background: `linear-gradient(135deg, #F3F3F3 0%, #E5E5E5 100%)`,
-                            }}
-                          >
-                            <svg
-                              className="w-12 h-12"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke={"var(--black)"}
-                              style={{ opacity: 0.3 }}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={1}
-                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                              />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Product Details */}
-                      <div className="flex-1 min-w-0">
-                        {/* Header with title and remove button */}
-                        <div className="flex justify-between items-start gap-3 mb-3">
-                          <h3 className="text-lg sm:text-xl font-semibold flex-1 text-black">
-                            {item.productName}
-                          </h3>
-                          <button
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="flex-shrink-0 p-2 rounded-full transition-colors duration-200 text-black bg-transparent hover:bg-primary/10 hover:text-primary"
-                          >
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M6 18L18 6M6 6l12 12"
-                              />
-                            </svg>
-                          </button>
-                        </div>
-
-                        {/* Price - separate row on mobile */}
-                        <div className="mb-4">
-                          <p className="text-base sm:text-lg font-medium text-primary">
-                            ${unit.toFixed(2)} each
-                          </p>
-                        </div>
-
-                        {/* Quantity Controls and Total - separate rows on mobile */}
-                        <div className="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:gap-4">
-                          {/* Quantity Controls */}
-                          <div className="flex items-center rounded-xl p-1 w-fit bg-white">
-                            <button
-                              type="button"
-                              className="p-2 rounded-lg transition-all duration-200 text-black bg-transparent hover:text-primary"
-                              onClick={() =>
-                                handleQuantity(
-                                  item.id,
-                                  Math.max(1, item.quantity - 1)
-                                )
-                              }
-                              aria-label="Decrease quantity"
-                            >
-                              <svg
-                                className="w-4 h-4 sm:w-5 sm:h-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M20 12H4"
-                                />
-                              </svg>
-                            </button>
-                            <input
-                              type="number"
-                              min={1}
-                              value={item.quantity || 1}
-                              onChange={(e) =>
-                                handleQuantity(
-                                  item.id,
-                                  Number(e.target.value) || 1
-                                )
-                              }
-                              className="w-14 sm:w-16 text-center font-medium text-sm sm:text-base text-black bg-transparent outline-none"
-                            />
-                            <button
-                              type="button"
-                              className="p-2 rounded-lg transition-all duration-200 text-black bg-transparent hover:text-primary"
-                              onClick={() =>
-                                handleQuantity(item.id, item.quantity + 1)
-                              }
-                              aria-label="Increase quantity"
-                            >
-                              <svg
-                                className="w-4 h-4 sm:w-5 sm:h-5"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 4v16m8-8H4"
-                                />
-                              </svg>
-                            </button>
-                          </div>
-
-                          {/* Total - separate row on mobile, inline on desktop */}
-                          <div className="sm:ml-auto">
-                            <span className="text-xl sm:text-2xl font-bold text-black">
-                              ${(item.price * item.quantity).toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Checkout Section */}
-          {items.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
-              {/* Order Details */}
-              <div className="lg:col-span-2 space-y-6">
-                <div className="rounded-2xl shadow-lg border border-gray-200 bg-white p-4 sm:p-6">
-                  <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 flex items-center text-black">
-                    <svg
-                      className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3 text-primary"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                    Order Details
+        {/* Main Cart Layout */}
+        {items.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            {/* Left Side - Cart Items + Shipping Address */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Cart Items Section */}
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
+                  <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
+                    Cart Items ({items.length})
                   </h2>
-
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-black/80">
-                        Order Notes
-                      </label>
-                      <textarea
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        className="w-full rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 text-black bg-white transition-all duration-200 outline-none focus:border-primary focus:border-2"
-                        rows={3}
-                        placeholder="Any special instructions for your order..."
-                      />
-                    </div>
-                  </div>
+                  <button
+                    onClick={handleClearCart}
+                    disabled={clearCartLoading}
+                    className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors self-start sm:self-auto"
+                  >
+                    {clearCartLoading ? (
+                      <div className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+                    ) : (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    )}
+                    <span className="hidden sm:inline">Clear Cart</span>
+                    <span className="sm:hidden">Clear</span>
+                  </button>
                 </div>
+
+                {(() => {
+                  // Group pack products together
+                  type GroupedItem = {
+                    isPackProduct: boolean;
+                    packProductName?: string;
+                    packType?: string;
+                    quantity?: number;
+                    price?: number;
+                    total?: number;
+                    variations?: Array<{
+                      packSize: number;
+                      variationName: string;
+                      productName: string;
+                      price: number;
+                    }>;
+                    item?: (typeof items)[0];
+                  };
+                  const groupedItems: GroupedItem[] = [];
+                  const processed = new Set<string>();
+
+                  items.forEach((item) => {
+                    if (processed.has(item.id)) return;
+
+                    // Check if this is a pack product item
+                    if (item.packProductId && item.packProductName) {
+                      // Find all items with the same packProductId and quantity
+                      const packGroup = items.filter(
+                        (otherItem) =>
+                          otherItem.packProductId === item.packProductId &&
+                          otherItem.quantity === item.quantity &&
+                          !processed.has(otherItem.id)
+                      );
+
+                      if (packGroup.length > 1) {
+                        // Group pack products
+                        packGroup.forEach((p) => processed.add(p.id));
+
+                        const totalPrice = packGroup.reduce(
+                          (sum, p) => sum + p.price * p.quantity,
+                          0
+                        );
+
+                        groupedItems.push({
+                          isPackProduct: true,
+                          packProductName: item.packProductName,
+                          quantity: item.quantity,
+                          price: totalPrice / item.quantity,
+                          total: totalPrice,
+                          variations: packGroup.map((p) => ({
+                            productName: p.productName,
+                            variationName: p.variationName || "No variation",
+                            packSize: p.packSize || 3,
+                            price: p.price,
+                          })),
+                        });
+                      } else {
+                        // Single pack item or regular item
+                        processed.add(item.id);
+                        groupedItems.push({
+                          isPackProduct: false,
+                          item: item,
+                        });
+                      }
+                    } else {
+                      // Regular item
+                      processed.add(item.id);
+                      groupedItems.push({
+                        isPackProduct: false,
+                        item: item,
+                      });
+                    }
+                  });
+
+                  return (
+                    <>
+                      {groupedItems.map((group, groupIdx) => {
+                        if (group.isPackProduct) {
+                          // Pack product with multiple variations
+                          return (
+                            <div
+                              key={`pack-${groupIdx}`}
+                              className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300"
+                            >
+                              <div className="flex gap-4 p-4">
+                                {/* Pack Product Image */}
+                                <div className="flex-shrink-0 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-2 flex items-center justify-center">
+                                  <Image
+                                    src="/assets/images/slider.png"
+                                    alt={
+                                      group.packProductName || "Pack Product"
+                                    }
+                                    width={120}
+                                    height={120}
+                                    className="w-24 h-24 object-contain rounded-lg"
+                                  />
+                                </div>
+
+                                {/* Pack Product Details */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-start mb-3">
+                                    <div className="flex-1">
+                                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                        {group.packProductName}
+                                      </h3>
+                                      <div className="mb-3">
+                                        <p className="text-sm font-medium text-gray-700 mb-2">
+                                          Selected Variations:
+                                        </p>
+                                        <div className="space-y-2">
+                                          {group.variations &&
+                                            group.variations.map(
+                                              (
+                                                variation: {
+                                                  packSize: number;
+                                                  variationName: string;
+                                                  productName: string;
+                                                  price: number;
+                                                },
+                                                vIdx: number
+                                              ) => (
+                                                <div
+                                                  key={vIdx}
+                                                  className="flex items-center gap-2 bg-orange-50 rounded p-2 border border-orange-200"
+                                                >
+                                                  <span className="text-xs font-medium text-gray-700">
+                                                    {variation.packSize}-Pack:
+                                                  </span>
+                                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                                    {variation.variationName}
+                                                  </span>
+                                                  <span className="text-xs text-gray-500">
+                                                    ({variation.productName})
+                                                  </span>
+                                                </div>
+                                              )
+                                            )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        // Remove all pack items
+                                        group.variations &&
+                                          group.variations.forEach(
+                                            (v: {
+                                              packSize: number;
+                                              variationName: string;
+                                              productName: string;
+                                              price: number;
+                                            }) => {
+                                              const itemToRemove = items.find(
+                                                (item) =>
+                                                  item.packProductId ===
+                                                    group.packProductName &&
+                                                  item.variationName ===
+                                                    v.variationName
+                                              );
+                                              if (itemToRemove) {
+                                                handleRemoveItem(
+                                                  itemToRemove.id
+                                                );
+                                              }
+                                            }
+                                          );
+                                      }}
+                                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                    >
+                                      <svg
+                                        className="w-4 h-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M6 18L18 6M6 6l12 12"
+                                        />
+                                      </svg>
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                      {/* Quantity Controls */}
+                                      <div className="flex items-center border border-gray-300 rounded-lg bg-white overflow-hidden">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const newQty = Math.max(
+                                              1,
+                                              (group.quantity || 1) - 1
+                                            );
+                                            // Update all pack items
+                                            group.variations &&
+                                              group.variations.forEach(
+                                                (v: {
+                                                  packSize: number;
+                                                  variationName: string;
+                                                  productName: string;
+                                                  price: number;
+                                                }) => {
+                                                  const itemToUpdate =
+                                                    items.find(
+                                                      (item) =>
+                                                        item.packProductId ===
+                                                          group.packProductName &&
+                                                        item.variationName ===
+                                                          v.variationName
+                                                    );
+                                                  if (itemToUpdate) {
+                                                    handleQuantity(
+                                                      itemToUpdate.id,
+                                                      newQty
+                                                    );
+                                                  }
+                                                }
+                                              );
+                                          }}
+                                          className="px-3 py-1 text-gray-600 hover:bg-gray-100 transition-colors"
+                                        >
+                                          −
+                                        </button>
+                                        <span className="px-4 py-1 text-gray-900 font-medium min-w-[3rem] text-center">
+                                          {group.quantity}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const newQty =
+                                              (group.quantity || 1) + 1;
+                                            // Update all pack items
+                                            group.variations &&
+                                              group.variations.forEach(
+                                                (v: {
+                                                  packSize: number;
+                                                  variationName: string;
+                                                  productName: string;
+                                                  price: number;
+                                                }) => {
+                                                  const itemToUpdate =
+                                                    items.find(
+                                                      (item) =>
+                                                        item.packProductId ===
+                                                          group.packProductName &&
+                                                        item.variationName ===
+                                                          v.variationName
+                                                    );
+                                                  if (itemToUpdate) {
+                                                    handleQuantity(
+                                                      itemToUpdate.id,
+                                                      newQty
+                                                    );
+                                                  }
+                                                }
+                                              );
+                                          }}
+                                          className="px-3 py-1 text-gray-600 hover:bg-gray-100 transition-colors"
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-lg font-bold text-orange-600">
+                                        ${(group.total || 0).toFixed(2)}
+                                      </p>
+                                      <p className="text-sm text-gray-500">
+                                        ${(group.price || 0).toFixed(2)} each
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          // Regular item
+                          const item = group.item;
+                          if (!item) return null;
+                          const unit = item.price;
+                          return (
+                            <div
+                              key={item.id}
+                              className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300"
+                            >
+                              <div className="flex gap-4 p-4">
+                                {/* Product Image */}
+                                <div className="flex-shrink-0 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-2 flex items-center justify-center">
+                                  <Image
+                                    src={
+                                      item.isCustomPack
+                                        ? "/assets/images/slider.png"
+                                        : normalizeImageSrc(item.imageUrl)
+                                    }
+                                    alt={
+                                      item.isCustomPack
+                                        ? "Custom 3-Pack"
+                                        : item.productName
+                                    }
+                                    width={120}
+                                    height={120}
+                                    className="w-24 h-24 object-contain rounded-lg"
+                                    onError={(e) => {
+                                      const target =
+                                        e.target as HTMLImageElement;
+                                      target.src = "/assets/images/slider.png";
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Product Details */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-start mb-3">
+                                    <div className="flex-1">
+                                      <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                                        {item.productName}
+                                      </h3>
+                                      <div className="flex flex-wrap gap-2 mb-1">
+                                        {item.isCustomPack && (
+                                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                            Custom Pack
+                                          </span>
+                                        )}
+                                        {item.variationName &&
+                                          !item.isCustomPack && (
+                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                              {item.variationName}
+                                            </span>
+                                          )}
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => handleRemoveItem(item.id)}
+                                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                    >
+                                      <svg
+                                        className="w-4 h-4"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M6 18L18 6M6 6l12 12"
+                                        />
+                                      </svg>
+                                    </button>
+                                  </div>
+
+                                  {/* Custom Pack Flavors */}
+                                  {item.isCustomPack &&
+                                    item.flavorIds &&
+                                    item.flavorIds.length > 0 && (
+                                      <div className="mb-4">
+                                        <div className="flex flex-wrap gap-2">
+                                          {item.flavorIds.map((flavorId) => (
+                                            <span
+                                              key={flavorId}
+                                              className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium bg-purple-100 text-purple-700"
+                                            >
+                                              {getFlavorName(flavorId)}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                  {/* Variation Flavors - Show flavors for variations (similar to custom packs) */}
+                                  {item.variationId &&
+                                    !item.isCustomPack &&
+                                    variationDetails[item.variationId]
+                                      ?.flavors &&
+                                    variationDetails[item.variationId].flavors
+                                      .length > 0 && (
+                                      <div className="mb-4">
+                                        <div className="flex flex-wrap gap-2">
+                                          {variationDetails[
+                                            item.variationId
+                                          ].flavors.map((flavor) => (
+                                            <span
+                                              key={flavor.id}
+                                              className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-medium bg-purple-100 text-purple-700"
+                                            >
+                                              {flavor.name}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                      {/* Quantity Controls */}
+                                      <div className="flex items-center border border-gray-300 rounded-lg bg-white overflow-hidden">
+                                        <button
+                                          type="button"
+                                          className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                                          onClick={() =>
+                                            handleQuantity(
+                                              item.id,
+                                              Math.max(1, item.quantity - 1)
+                                            )
+                                          }
+                                        >
+                                          <svg
+                                            className="w-4 h-4"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M20 12H4"
+                                            />
+                                          </svg>
+                                        </button>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          value={item.quantity || 1}
+                                          onChange={(e) =>
+                                            handleQuantity(
+                                              item.id,
+                                              Number(e.target.value) || 1
+                                            )
+                                          }
+                                          className="w-12 h-8 text-center font-medium text-sm text-gray-900 bg-transparent outline-none border-0 border-l border-r border-gray-300"
+                                        />
+                                        <button
+                                          type="button"
+                                          className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                                          onClick={() =>
+                                            handleQuantity(
+                                              item.id,
+                                              item.quantity + 1
+                                            )
+                                          }
+                                        >
+                                          <svg
+                                            className="w-4 h-4"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M12 4v16m8-8H4"
+                                            />
+                                          </svg>
+                                        </button>
+                                      </div>
+
+                                      <div className="text-sm text-gray-600 font-medium">
+                                        ${unit.toFixed(2)} each
+                                      </div>
+                                    </div>
+
+                                    <div className="text-right">
+                                      <div className="text-sm text-gray-600 mb-1">
+                                        Total:
+                                      </div>
+                                      <div className="text-xl font-bold text-gray-900">
+                                        $
+                                        {(item.price * item.quantity).toFixed(
+                                          2
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                      })}
+                    </>
+                  );
+                })()}
               </div>
 
-              {/* Order Summary */}
-              <div className="lg:col-span-1">
-                <div className="rounded-2xl shadow-lg border border-gray-200 bg-white p-4 sm:p-6 sticky top-4 sm:top-6">
-                  <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 flex items-center text-black">
+              {/* Shipping Address Form - Now on LEFT side */}
+              {showShippingForm && (
+                <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      Shipping Address
+                    </h2>
                     <svg
-                      className="w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3 text-primary"
+                      className="w-6 h-6 text-orange-500"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -579,362 +1269,430 @@ const CartPage = () => {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         strokeWidth={2}
-                        d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 00-2 2z"
+                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
                       />
                     </svg>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Name & Email Row */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Full Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={shippingAddress.name}
+                          onChange={(e) =>
+                            setShippingAddress({
+                              ...shippingAddress,
+                              name: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          placeholder="John Doe"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Email <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="email"
+                          value={shippingAddress.email}
+                          onChange={(e) =>
+                            setShippingAddress({
+                              ...shippingAddress,
+                              email: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          placeholder="john@example.com"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Phone */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={shippingAddress.phone}
+                        onChange={(e) =>
+                          setShippingAddress({
+                            ...shippingAddress,
+                            phone: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        placeholder="+1 (555) 123-4567"
+                      />
+                    </div>
+
+                    {/* Street Address */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Street Address <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={shippingAddress.street}
+                        onChange={(e) =>
+                          setShippingAddress({
+                            ...shippingAddress,
+                            street: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        placeholder="123 Main St, Apt 4B"
+                        required
+                      />
+                    </div>
+
+                    {/* City, State, ZIP Row */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          City <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={shippingAddress.city}
+                          onChange={(e) =>
+                            setShippingAddress({
+                              ...shippingAddress,
+                              city: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          placeholder="New York"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          State <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={shippingAddress.state}
+                          onChange={(e) =>
+                            setShippingAddress({
+                              ...shippingAddress,
+                              state: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          placeholder="NY"
+                          maxLength={2}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          ZIP <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={shippingAddress.zipCode}
+                          onChange={(e) =>
+                            setShippingAddress({
+                              ...shippingAddress,
+                              zipCode: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          placeholder="10001"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Calculate Shipping Button */}
+                    <button
+                      onClick={calculateShippingRates}
+                      disabled={calculatingShipping}
+                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {calculatingShipping ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <svg
+                            className="animate-spin h-5 w-5"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                              fill="none"
+                            />
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            />
+                          </svg>
+                          Calculating Shipping...
+                        </span>
+                      ) : (
+                        <span className="flex items-center justify-center gap-2">
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                            />
+                          </svg>
+                          Calculate Shipping
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Shipping Error */}
+                    {shippingError && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-600">{shippingError}</p>
+                      </div>
+                    )}
+
+                    {/* Shipping Options */}
+                    {shippingRates.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Select Shipping Method
+                        </label>
+                        {shippingRates.map((rate) => (
+                          <label
+                            key={rate.objectId}
+                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                              selectedShippingRate?.objectId === rate.objectId
+                                ? "border-orange-500 bg-orange-50"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="radio"
+                                name="shippingRate"
+                                checked={
+                                  selectedShippingRate?.objectId ===
+                                  rate.objectId
+                                }
+                                onChange={() => setSelectedShippingRate(rate)}
+                                className="w-4 h-4 text-orange-600 focus:ring-orange-500"
+                              />
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {rate.carrier} - {rate.serviceName}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {rate.carrier.includes('Standard') || rate.serviceName.includes('Standard') ? '5-7 business days' : '2-5 business days'}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-sm font-bold text-gray-900">
+                              ${rate.amount.toFixed(2)}
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right Side - Order Summary */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-4 lg:top-6 space-y-3 sm:space-y-4 lg:space-y-6">
+                {/* Order Summary */}
+                <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
                     Order Summary
                   </h2>
 
-                  <div className="space-y-4 mb-6">
-                    <div className="flex justify-between items-center py-2.5 sm:py-3 border-b border-gray-200">
-                      <span className="text-black/70">Subtotal</span>
-                      <span className="text-lg sm:text-xl font-bold text-black">
+                  <div className="space-y-3 mb-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Subtotal</span>
+                      <span className="font-medium text-gray-900">
                         ${getTotal().toFixed(2)}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center py-2.5 sm:py-3 border-b border-gray-200">
-                      <span className="text-black/70">Shipping</span>
-                      <span className="text-black">Free</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2.5 sm:py-3">
-                      <span className="text-base sm:text-lg font-semibold text-black">
-                        Total
-                      </span>
-                      <span className="text-xl sm:text-2xl font-bold text-primary">
-                        ${getTotal().toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Special Offer Banner */}
-                  <div className="mb-4 p-3 rounded-lg text-center bg-gradient-to-br from-primary/15 to-primary/15">
-                    <div className="flex items-center justify-center mb-1">
-                      <svg
-                        className="w-4 h-4 mr-2 text-primary"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
-                        />
-                      </svg>
-                      <span className="text-sm font-bold text-primary">
-                        Special Offer!
-                      </span>
-                    </div>
-                    <p className="text-xs text-black/80">
-                      Add more items to your order and save on shipping
-                    </p>
-                  </div>
-
-                  {/* Recommended Products Section */}
-                  <div className="mb-6 p-4 rounded-xl border-2 border-dashed border-primary/40 bg-primary/5">
-                    <div className="flex items-center mb-4">
-                      <svg
-                        className="w-5 h-5 mr-2 text-primary"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                        />
-                      </svg>
-                      <h3 className="text-lg font-bold text-black">
-                        You might also like
-                      </h3>
-                      <div className="flex-1 h-px ml-3 bg-gradient-to-r from-primary/40 to-transparent"></div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      {recommendedLoading ? (
-                        // Loading state
-                        <>
-                          <div
-                            className="bg-white rounded-lg p-3 shadow-sm border animate-pulse"
-                            style={{ borderColor: `${"var(--primary)"}20` }}
-                          >
-                            <div className="aspect-square mb-2 rounded-lg bg-gray-200"></div>
-                            <div className="h-4 bg-gray-200 rounded mb-1"></div>
-                            <div className="h-3 bg-gray-200 rounded mb-2"></div>
-                            <div className="flex items-center justify-between">
-                              <div className="h-4 bg-gray-200 rounded w-12"></div>
-                              <div className="h-6 bg-gray-200 rounded-full w-12"></div>
-                            </div>
-                          </div>
-                          <div
-                            className="bg-white rounded-lg p-3 shadow-sm border animate-pulse"
-                            style={{ borderColor: `${"var(--primary)"}20` }}
-                          >
-                            <div className="aspect-square mb-2 rounded-lg bg-gray-200"></div>
-                            <div className="h-4 bg-gray-200 rounded mb-1"></div>
-                            <div className="h-3 bg-gray-200 rounded mb-2"></div>
-                            <div className="flex items-center justify-between">
-                              <div className="h-4 bg-gray-200 rounded w-12"></div>
-                              <div className="h-6 bg-gray-200 rounded-full w-12"></div>
-                            </div>
-                          </div>
-                        </>
-                      ) : recommendedProducts.length > 0 ? (
-                        // Real products
-                        recommendedProducts.map((product, index) => (
-                          <div
-                            key={product.id}
-                            className="bg-white rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer border"
-                            style={{ borderColor: `${"var(--primary)"}20` }}
-                          >
-                            <div className="aspect-square mb-2 rounded-lg overflow-hidden bg-gray-100">
-                              {product.imageUrl ? (
-                                <Image
-                                  src={product.imageUrl}
-                                  alt={product.name}
-                                  width={100}
-                                  height={100}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div
-                                  className="w-full h-full flex items-center justify-center"
-                                  style={{
-                                    background: `linear-gradient(135deg, ${
-                                      index % 2 === 0
-                                        ? `${"var(--primary)"}20, ${"var(--primary)"}20`
-                                        : `${"var(--primary)"}20, ${"var(--primary)"}20`
-                                    })`,
-                                  }}
-                                >
-                                  <svg
-                                    className="w-8 h-8"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke={
-                                      index % 2 === 0
-                                        ? "var(--primary)"
-                                        : "var(--primary)"
-                                    }
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-                                    />
-                                  </svg>
-                                </div>
-                              )}
-                            </div>
-                            <h4
-                              className="text-sm font-semibold mb-1 truncate"
-                              style={{ color: "var(--black)" }}
-                              title={product.name}
-                            >
-                              {product.name}
-                            </h4>
-                            <p
-                              className="text-xs mb-2"
-                              style={{ color: "var(--black)", opacity: 0.7 }}
-                            >
-                              {product.category || "Premium candy"}
-                            </p>
-                            <div className="flex items-center justify-between">
-                              <span
-                                className="text-sm font-bold"
-                                style={{ color: "var(--primary)" }}
-                              >
-                                ${product.price?.toFixed(2) || "0.00"}
-                              </span>
-                              <button
-                                onClick={() =>
-                                  handleAddRecommendedProduct(product)
-                                }
-                                className="text-xs px-2 py-1 rounded-full text-white font-medium hover:opacity-90 transition-opacity cursor-pointer"
-                                style={{ background: "var(--primary)" }}
-                              >
-                                Add
-                              </button>
-                            </div>
-                          </div>
-                        ))
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Shipping</span>
+                      {selectedShippingRate ? (
+                        <span className="font-medium text-gray-900">
+                          ${selectedShippingRate.amount.toFixed(2)}
+                        </span>
                       ) : (
-                        // Fallback when no products available - show explore options
-                        <>
-                          <div
-                            className="bg-white rounded-lg p-3 shadow-sm border text-center cursor-pointer hover:shadow-md transition-shadow"
-                            style={{ borderColor: `${"var(--primary)"}20` }}
-                            onClick={handleViewAllProducts}
-                          >
-                            <div
-                              className="aspect-square mb-2 rounded-lg bg-gray-100 flex items-center justify-center"
-                              style={{
-                                background: `linear-gradient(135deg, ${"var(--primary)"}20, ${"var(--primary)"}20)`,
-                              }}
-                            >
-                              <svg
-                                className="w-8 h-8"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke={"var(--primary)"}
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                                />
-                              </svg>
-                            </div>
-                            <h4
-                              className="text-sm font-semibold mb-1"
-                              style={{ color: "var(--black)" }}
-                            >
-                              Browse Products
-                            </h4>
-                            <p
-                              className="text-xs mb-2"
-                              style={{ color: "var(--black)", opacity: 0.7 }}
-                            >
-                              Discover more items
-                            </p>
-                          </div>
-                          <div
-                            className="bg-white rounded-lg p-3 shadow-sm border text-center cursor-pointer hover:shadow-md transition-shadow"
-                            style={{ borderColor: `${"var(--primary)"}20` }}
-                            onClick={fetchRecommendedProducts}
-                          >
-                            <div
-                              className="aspect-square mb-2 rounded-lg bg-gray-100 flex items-center justify-center"
-                              style={{
-                                background: `linear-gradient(135deg, ${"var(--primary)"}20, ${"var(--primary)"}20)`,
-                              }}
-                            >
-                              <svg
-                                className="w-8 h-8"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke={"var(--primary)"}
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                                />
-                              </svg>
-                            </div>
-                            <h4
-                              className="text-sm font-semibold mb-1"
-                              style={{ color: "var(--black)" }}
-                            >
-                              Refresh
-                            </h4>
-                            <p
-                              className="text-xs mb-2"
-                              style={{ color: "var(--black)", opacity: 0.7 }}
-                            >
-                              Get new suggestions
-                            </p>
-                          </div>
-                        </>
+                        <span className="text-gray-500 italic text-xs">
+                          Calculated at checkout
+                        </span>
                       )}
                     </div>
-
-                    <div className="mt-3 flex justify-center gap-2">
-                      <CustomButton
-                        title="🔄 New suggestions"
-                        onClick={fetchRecommendedProducts}
-                        loading={recommendedLoading}
-                        loadingText="Loading..."
-                        disabled={recommendedLoading}
-                        className="text-sm font-medium px-3 py-2 rounded-lg transition-colors hover:opacity-90 text-white bg-secondary hover:bg-secondary/80"
-                      />
-                      <CustomButton
-                        title="View all products →"
-                        onClick={handleViewAllProducts}
-                        className="text-sm font-medium px-3 py-2 rounded-lg transition-colors hover:opacity-90 text-primary bg-primary  hover:bg-primary/10"
-                      />
+                    {selectedShippingRate && (
+                      <div className="text-xs text-gray-500 flex justify-end">
+                        {selectedShippingRate.carrier} -{" "}
+                        {selectedShippingRate.serviceName}
+                        {selectedShippingRate.estimatedDays &&
+                          ` (${selectedShippingRate.estimatedDays} days)`}
+                      </div>
+                    )}
+                    <div className="border-t border-gray-200 pt-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-semibold text-gray-900">
+                          Total
+                        </span>
+                        <span className="text-2xl font-bold text-orange-600">
+                          $
+                          {(
+                            getTotal() + (selectedShippingRate?.amount || 0)
+                          ).toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Order Notes */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Order Notes (Optional)
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full px-3 py-2 text-sm text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none placeholder:text-gray-400"
+                      rows={2}
+                      placeholder="Special instructions..."
+                    />
+                  </div>
+
+                  {/* Error Display */}
                   {orderError && (
-                    <div
-                      className="mb-4 p-3 rounded-lg"
-                      style={{
-                        background: `${"var(--primary)"}10`,
-                        border: `1px solid ${"var(--primary)"}40`,
-                      }}
-                    >
-                      <p
-                        className="text-sm"
-                        style={{ color: "var(--primary)" }}
-                      >
-                        {orderError}
-                      </p>
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-600">{orderError}</p>
                     </div>
                   )}
 
-                  <div className="space-y-3">
-                    <CustomButton
-                      title="Complete Purchase"
-                      onClick={checkout}
-                      loading={orderLoading}
-                      loadingText="Placing Order..."
-                      disabled={orderLoading}
-                      className="w-full font-semibold py-3.5 sm:py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 text-sm sm:text-base bg-gradient-to-r from-primary to-secondary text-white border-0"
-                    />
+                  {/* Checkout Button */}
+                  <CustomButton
+                    title={
+                      !showShippingForm
+                        ? "Continue to Shipping"
+                        : !selectedShippingRate
+                        ? "Calculate Shipping First"
+                        : "Complete Checkout"
+                    }
+                    onClick={checkout}
+                    loading={orderLoading}
+                    loadingText="Processing..."
+                    disabled={
+                      orderLoading ||
+                      (showShippingForm && !selectedShippingRate)
+                    }
+                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold py-3 rounded-lg transition-all duration-200 transform hover:scale-[1.02] shadow-lg hover:shadow-xl text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
 
-                    <CustomButton
-                      title="Clear Cart"
-                      onClick={handleClearCart}
-                      loading={clearCartLoading}
-                      loadingText="Clearing..."
-                      disabled={clearCartLoading}
-                      className="w-full font-semibold py-3 rounded-xl transition-all duration-200 hover:opacity-90 text-primary  hover:bg-primary/5 hover:text-secondary"
-                    />
+                {/* Custom Pack Builder */}
+                {/* <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl border border-orange-200 p-6">
+                  <div className="flex items-center mb-3">
+                    <svg
+                      className="w-5 h-5 text-orange-600 mr-2"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                      />
+                    </svg>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Create Custom Pack
+                    </h3>
                   </div>
-
-                  <div
-                    className="mt-4 sm:mt-6 p-3 sm:p-4 rounded-lg"
-                    style={{
-                      background: `${"var(--primary)"}10`,
-                    }}
-                  >
-                    <div className="flex items-start">
-                      <svg
-                        className="w-4 h-4 sm:w-5 sm:h-5 mt-0.5 mr-2 flex-shrink-0"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke={"var(--primary)"}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      <p
-                        className="text-xs sm:text-sm"
-                        style={{ color: "var(--black)", opacity: 0.8 }}
-                      >
-                        Secure checkout powered by industry-standard encryption.
-                        Your payment information is protected.
-                      </p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Build your perfect 3-pack by choosing any 3 flavors you
+                    love!
+                  </p>
+                  <div className="bg-white rounded-lg p-4 mb-4 border border-orange-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900 text-base">
+                          Custom 3-Pack
+                        </h4>
+                        <p className="text-sm text-gray-600">
+                          Choose 3 flavors • Same price
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-orange-600">
+                          $27.00
+                        </div>
+                        <div className="text-sm text-green-600 font-medium">
+                          ✓ Same Price
+                        </div>
+                      </div>
                     </div>
+                  </div>
+                  <CustomButton
+                    title="Build Custom Pack"
+                    onClick={() => router.push("/shop")}
+                    className="w-full !bg-white !text-black border-2 border-orange-300 hover:!bg-orange-50 font-semibold py-2.5 rounded-lg transition-all duration-200 text-sm"
+                  />
+                </div> */}
+
+                {/* Security Notice */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <svg
+                      className="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                      />
+                    </svg>
+                    <p className="text-sm text-blue-800">
+                      Secure checkout powered by industry-standard encryption.
+                      Your payment information is protected.
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </VerificationGuard>
+    </div>
   );
 };
 

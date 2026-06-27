@@ -39,3 +39,48 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# SWC cache
+.swc/
+
+# Test files and temporary scripts
+*.test.js
+*.test.ts
+test-*.js
+test-*.ts
+debug-*.js
+debug-*.ts
+simulate-*.js
+simulate-*.ts
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# SSL certificates
+*.key
+*.crt
+*.csr
+
+# Backup files
+*.bak
+*.backup
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/

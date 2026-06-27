@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+Disallow: /dashboard/
+Disallow: /auth/
+Disallow: /checkout
+Disallow: /cart
+Disallow: /profile
+Disallow: /orders
+Disallow: /wishlist
+Disallow: /verify-email
+
+Sitemap: https://licorice4good.com/sitemap.xml
