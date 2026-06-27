@@ -40,32 +40,38 @@ app.use(helmetConfig);
 app.use(securityHeaders);
 
 // CORS configuration
-const allowedOrigins = [
+const staticOrigins = [
   "https://licorice4good.com",
   "http://localhost:3001",
   "https://www.licorice4good.com",
   "https://api.licorice4good.com",
   "http://localhost:3000", // Next.js dev server
-  "http://localhost:5000", // Backenid dev server
+  "http://localhost:5000", // Backend dev server
   "https://licorice4-good-rk9j.vercel.app",
   "https://nathan-xi-two.vercel.app",
   "https://nathan-eh1y.vercel.app",
 ];
 
+const clientUrl = process.env.CLIENT_URL?.replace(/\/+$/, "");
+
+const isAllowedOrigin = (origin: string): boolean => {
+  if (staticOrigins.includes(origin)) return true;
+  if (clientUrl && origin === clientUrl) return true;
+  // Allow all Vercel frontend preview/production deployments
+  if (/^https:\/\/[\w-]+\.vercel\.app$/i.test(origin)) return true;
+  return false;
+};
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl requests, and Stripe webhooks)
+      // Allow requests with no origin (mobile apps, curl, Stripe webhooks)
       if (!origin) return callback(null, true);
 
-      // Allow Stripe webhook requests (they don't have an origin header)
-      if (origin === undefined || origin === null) {
-        return callback(null, true);
-      }
-
-      if (allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
+        logger.warn(`Blocked CORS request from origin: ${origin}`);
         callback(new Error("Not allowed by CORS"));
       }
     },

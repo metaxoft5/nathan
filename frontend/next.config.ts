@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
-const API_PROXY_TARGET = process.env.NEXT_PUBLIC_API_URL;
+function normalizeApiUrl(url: string | undefined): string | undefined {
+  if (!url?.trim()) return undefined;
+  const trimmed = url.trim().replace(/\/+$/, "");
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+const API_PROXY_TARGET = normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL);
 
 const nextConfig: NextConfig = {
   async rewrites() {

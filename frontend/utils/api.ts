@@ -1,6 +1,15 @@
 import axios from "axios";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+function normalizeApiUrl(url: string | undefined): string {
+  if (!url?.trim()) return "";
+  const trimmed = url.trim().replace(/\/+$/, "");
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+export const API_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL);
 const AUTH_TOKEN_KEY = "auth_token";
 
 export function apiPath(path: string): string {
